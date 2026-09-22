@@ -14,6 +14,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from chunking import process_document
 from markitdown_service import MarkItDownError, convert_file
 from preprocessing import clean_text
+from tfidf_service import TfidfIndex
+from retrieval import RetrieverService
+from config import RetrievalConfig
 
 
 class WorkerHandler(BaseHTTPRequestHandler):
@@ -46,6 +49,8 @@ class WorkerHandler(BaseHTTPRequestHandler):
                 self._handle_convert()
             elif self.path == "/process":
                 self._handle_process()
+            elif self.path == "/retrieve":
+                self._handle_retrieve()
             else:
                 self._send_json({"error": "not found"}, 404)
         except Exception:
@@ -77,6 +82,43 @@ class WorkerHandler(BaseHTTPRequestHandler):
         overlap_words = data.get("overlap_words", 50)
         chunks = process_document(text, max_words=max_words, overlap_words=overlap_words)
         self._send_json({"chunks": chunks, "total_chunks": len(chunks)})
+
+    def _handle_retrieve(self) -> None:
+        """Retrieve top-k relevant chunks using TF-IDF + cosine similarity."""
+        data = self._read_json()
+        chunks = data.get("chunks", [])
+        query = data.get("query", "")
+        top_k = data.get("top_k", 3)
+        threshold = data.get("threshold", 0.20)
+
+        if not chunks:
+            self._send_json({"error": "chunks required"}, 400)
+            return
+
+        if not query:
+            self._send_json({"error": "query required"}, 400)
+            return
+
+        try:
+            # Build TF-IDF index
+            index = TfidfIndex()
+            index.fit(chunks)
+
+            # Configure retriever
+            config = RetrievalConfig(
+                similarity_threshold=threshold,
+                top_k=top_k,
+            )
+            service = RetrieverService(index, config=config)
+
+            # Retrieve with relevance
+            result = service.retrieve_with_relevance(query, top_k=top_k)
+
+            self._send_json(result)
+        except ValueError as e:
+            self._send_json({"error": str(e)}, 400)
+        except Exception as e:
+            self._send_json({"error": str(e)}, 500)
 
 
 def main(port: int = 8001) -> None:
