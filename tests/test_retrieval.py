@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ai-worker"))
 
 from tfidf_service import TfidfIndex
 from retrieval import RetrieverService, retrieve
+from config import RetrievalConfig
 
 
 # ── setup ────────────────────────────────────────────────────────────
@@ -238,11 +239,12 @@ def test_similarity_in_valid_range():
 
 def test_retrieve_function():
     """Module-level retrieve() function should work."""
+    config = RetrievalConfig(top_k=2)
     index = get_test_index()
 
-    results = retrieve(index, "beasiswa", top_k=2)
-    assert len(results) <= 2
-    assert all("chunk_index" in r for r in results)
+    result = retrieve(index, "beasiswa", config=config)
+    assert "relevant" in result
+    assert len(result["results"]) <= 2
 
 
 # ── realistic scenario ───────────────────────────────────────────────
