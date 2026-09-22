@@ -1129,66 +1129,64 @@ MarkItDown performs file I/O using the privileges of the process, so input handl
 
 # 26. Testing Strategy
 
-At minimum, test:
+Semua automated test WAJIB berada di folder `tests/`.
 
-### MarkItDown
-
-```text
-PDF → Markdown
-DOCX → Markdown
-TXT → Markdown
-```
-
-### Chunking
-
-Test:
+Struktur:
 
 ```text
-empty document
-short document
-large document
-headings
-paragraph boundaries
+tests/
+├── unit/
+├── integration/
+└── fixtures/
 ```
 
-### Retrieval
+Minimum coverage:
 
-Test:
+* **MarkItDown:** PDF, DOCX, TXT → Markdown
+* **Preprocessing & Chunking:** empty, short, large, paragraph/heading boundaries
+* **TF-IDF & Retrieval:** relevant, irrelevant, multiple relevant, low similarity
+* **Relevance Threshold:** threshold behavior dan edge cases
+* **RAG Pipeline:** retrieval → context → Ollama
+* **API:** CRUD, upload, chat, retrieval
+* **UI:** validation, loading, empty, error, dialog, responsive
 
-```text
-relevant query
-irrelevant query
-multiple relevant chunks
-low similarity query
-```
+Test WAJIB dijalankan setelah perubahan kode yang relevan. Jangan mengklaim test berhasil jika belum benar-benar dijalankan.
 
-### API
+### Development Log (WAJIB — setiap prompt yang mengubah kode)
 
-Test:
+**PENTING: Aturan ini berlaku untuk SEMUA prompt.**
 
-```text
-create knowledge
-read knowledge
-update knowledge
-delete knowledge
-upload document
-chat
-retrieval
-```
+Setiap kali selesai mengerjakan prompt yang mengubah kode, WAJIB:
 
-### UI
+1. Load skill `sop-devlog`
+2. Update `docs/devlogs/<YYYYMMDD>-<nama_branch>.md`
+3. Commit devlog bersama kode perubahan
 
-Test:
+Contoh prompt ad-hoc yang TETAP harus update devlog:
 
-```text
-form validation
-loading states
-empty states
-error states
-dialog interactions
-responsive layout
-keyboard navigation
-```
+* "buatkan library untuk handle PDF" → kode berubah → update devlog
+* "install package redis dan buat wrapper-nya" → kode berubah → update devlog
+
+**Skip HANYA untuk:** fix typo, rename variabel, formatting saja.
+
+### Update CLAUDE.md (WAJIB — setiap prompt yang mengubah kode)
+
+**PENTING: Aturan ini berlaku untuk SEMUA prompt.**
+
+Setiap kali selesai mengerjakan prompt yang mengubah kode, cek apakah `CLAUDE.md` perlu di-update.
+
+Update secara incremental melalui `Edit`, **JANGAN full regenerate**:
+
+* Module/model/view/service/URL baru → update **Module Map**
+* Shared component baru → update **Shared UI Components**
+* Entry point navigasi baru → update **Integration Points**
+* API pattern berubah → update **API Patterns**
+* Layout/blocks berubah → update **Template & Layout**
+* Dependency baru di-install → update **Tech Stack** dan **Core Libraries**
+* Folder/struktur baru dibuat → update **Struktur Direktori**
+
+**Skip HANYA untuk:** bug fix tanpa ubah struktur, tambah test, rename variabel, fix typo, formatting.
+
 
 ---
 
