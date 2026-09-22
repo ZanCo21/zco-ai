@@ -1,17 +1,17 @@
-# znco run - Development Environment Orchestrator
+# zco run - Development Environment Orchestrator
 
 ## Overview
 
-`znco run` is a lightweight process orchestrator that starts the complete LocalMind development stack with a single command:
+`zco run` is a lightweight process orchestrator that starts the complete ZnCo ChatBot development stack with a single command:
 
 ```bash
-pnpm znco
+pnpm zco
 ```
 
 or
 
 ```bash
-pnpm znco run
+pnpm zco run
 ```
 
 ## What It Does
@@ -27,32 +27,32 @@ Starts three services concurrently:
 ### Start Development Stack
 
 ```bash
-pnpm znco
+pnpm zco
 ```
 
 Expected output:
 
 ```
 ╔══════════════════════════════════════════════╗
-║              LocalMind                       ║
+║              ZnCo ChatBot                    ║
 ║          Development Environment             ║
 ╚══════════════════════════════════════════════╝
 
-[12:34:56] [znco] Starting services...
+[12:34:56] [zco] Starting services...
 
 [12:34:56] [Python] Starting with: uv run python ai-worker/main.py
 [12:34:57] [Python] Worker starting on 127.0.0.1:8001
-[12:34:58] [znco] ✓ Python Worker ready → http://127.0.0.1:8001
+[12:34:58] [zco] ✓ Python Worker ready → http://127.0.0.1:8001
 
-[12:34:58] [znco] ✓ Ollama already running → http://localhost:11434
+[12:34:58] [zco] ✓ Ollama already running → http://localhost:11434
 
 [12:34:58] [Next.js] Starting with: pnpm dev
 [12:34:59] [Next.js] ▲ Next.js 16...
 [12:35:00] [Next.js] - Local: http://localhost:3000
-[12:35:00] [znco] ✓ Next.js ready → http://localhost:3000
+[12:35:00] [zco] ✓ Next.js ready → http://localhost:3000
 
-[12:35:00] [znco] ✓ All services started
-[12:35:00] [znco] Press Ctrl+C to shutdown
+[12:35:00] [zco] ✓ All services started
+[12:35:00] [zco] Press Ctrl+C to shutdown
 ```
 
 ### Stop Development Stack
@@ -62,19 +62,19 @@ Press `Ctrl+C`:
 ```
 ^C
 
-[12:35:45] [znco] Shutting down...
+[12:35:45] [zco] Shutting down...
 
-[12:35:45] [znco] Stopping Next.js...
-[12:35:45] [znco] Stopping Python Worker...
+[12:35:45] [zco] Stopping Next.js...
+[12:35:45] [zco] Stopping Python Worker...
 
-[12:35:47] [znco] Cleaning development cache...
+[12:35:47] [zco] Cleaning development cache...
 
 ✓ Removed .next
 ✓ Removed Python __pycache__
 
-[12:35:47] [znco] ✓ Cache cleanup completed (2 items removed)
+[12:35:47] [zco] ✓ Cache cleanup completed (2 items removed)
 
-[12:35:47] [znco] Shutdown complete.
+[12:35:47] [zco] Shutdown complete.
 ```
 
 ## Features
@@ -85,7 +85,7 @@ All services start in parallel, not sequentially. The orchestrator waits for hea
 
 ### ✓ Health Checks
 
-Before declaring services "ready", `znco` checks:
+Before declaring services "ready", `zco` checks:
 
 - **Next.js**: HTTP GET `http://localhost:3000/`
 - **Python Worker**: HTTP GET `http://127.0.0.1:8001/health`
@@ -96,13 +96,13 @@ If a service fails to respond within the timeout, startup is aborted.
 ### ✓ Ollama Ownership Tracking
 
 **If Ollama is already running:**
-- `znco` detects it and reuses the existing instance
+- `zco` detects it and reuses the existing instance
 - Marked as "not owned" (external)
 - On `Ctrl+C`, Ollama is NOT terminated
 - Only Next.js + Python Worker are stopped
 
 **If Ollama is not running:**
-- `znco` displays message to start it manually in another terminal
+- `zco` displays message to start it manually in another terminal
 - Does not force-start Ollama
 - Continues with Next.js + Python Worker
 - Chat functionality will not work without Ollama, but other features work
@@ -120,8 +120,8 @@ Port 11434  → Ollama
 If port is occupied, displays clear error:
 
 ```
-[znco] Port 8001 is already in use
-[znco] Python Worker failed to start
+[zco] Port 8001 is already in use
+[zco] Python Worker failed to start
 ```
 
 ### ✓ Graceful Shutdown
@@ -168,7 +168,7 @@ Clear logging helps identify which service produced output:
 ```
 [12:35:00] [Next.js]   ▲ Next.js 16...
 [12:35:00] [Python]    Worker starting on 127.0.0.1:8001
-[12:35:00] [znco]      ✓ Python Worker ready
+[12:35:00] [zco]      ✓ Python Worker ready
 ```
 
 Color coding:
@@ -183,7 +183,7 @@ Color coding:
 - `scripts/run.js` — Main orchestrator (Node.js, no external dependencies)
 
 **Files Modified:**
-- `package.json` — Added `"znco": "node scripts/run.js"` script
+- `package.json` — Added `"zco": "node scripts/run.js"` script
 
 **Architecture:**
 - Pure Node.js (no external process managers)
@@ -195,7 +195,7 @@ Color coding:
 ## Startup Order
 
 ```
-znco run
+zco run
   │
   ├─→ Check Ollama
   │    ├─ Running → Reuse (not owned)
@@ -219,7 +219,7 @@ znco run
 
 ## Environment Variables
 
-`znco` respects existing `.env` configuration:
+`zco` respects existing `.env` configuration:
 
 ```env
 OLLAMA_URL=http://localhost:11434
@@ -236,8 +236,8 @@ These are passed to child processes automatically.
 ### Port already in use
 
 ```
-[znco] Port 3000 is already in use
-[znco] Next.js failed to start
+[zco] Port 3000 is already in use
+[zco] Next.js failed to start
 ```
 
 **Solution:** Stop the conflicting process or use different ports.
@@ -245,7 +245,7 @@ These are passed to child processes automatically.
 ### Python Worker health check fails
 
 ```
-[znco] Python Worker failed to start
+[zco] Python Worker failed to start
 ```
 
 **Solutions:**
@@ -256,7 +256,7 @@ These are passed to child processes automatically.
 ### Next.js health check fails
 
 ```
-[znco] Next.js failed to start
+[zco] Next.js failed to start
 ```
 
 **Solutions:**
@@ -267,14 +267,14 @@ These are passed to child processes automatically.
 ### Ollama port conflict
 
 ```
-[znco] Port 11434 is occupied by another process (not Ollama)
+[zco] Port 11434 is occupied by another process (not Ollama)
 ```
 
 **Solution:** Stop the conflicting process or start Ollama manually on different port.
 
 ## Manual Alternative
 
-If `znco run` doesn't work, start services manually in separate terminals:
+If `zco run` doesn't work, start services manually in separate terminals:
 
 **Terminal 1 - Next.js:**
 ```bash
@@ -305,6 +305,6 @@ ollama serve
 - Docker support (`docker-compose`)
 - PM2 integration
 - Custom port configuration
-- Selective service startup (`znco run --no-ollama`)
+- Selective service startup (`zco run --no-ollama`)
 - Service restart on crash
 - Log file persistence

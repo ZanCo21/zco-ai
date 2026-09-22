@@ -1,8 +1,8 @@
-# znco run - Windows Spawn Fix Summary
+# zco run - Windows Spawn Fix Summary
 
 ## Problem
 
-Error on Windows when running `pnpm znco`:
+Error on Windows when running `pnpm zco`:
 ```
 [Next.js] Error: spawn pnpm ENOENT
 [Next.js] Exited with code -4058
@@ -48,24 +48,24 @@ const proc = spawn(config.command, config.args, {
 
 ### Command
 ```bash
-pnpm znco
+pnpm zco
 ```
 
 ### Output (Success)
 ```
 ╔══════════════════════════════════════════════╗
-║              LocalMind                       ║
+║              ZnCo ChatBot                    ║
 ║          Development Environment             ║
 ╚══════════════════════════════════════════════╝
 
-[5:30:21 PM] [znco] Starting services...
+[5:30:21 PM] [zco] Starting services...
 
-[5:30:21 PM] [znco] ✓ Ollama status checked (not running - manual start)
-[5:30:24 PM] [znco] ✓ Python Worker ready → http://127.0.0.1:8001
-[5:30:24 PM] [znco] ✓ Next.js ready → http://localhost:3000
+[5:30:21 PM] [zco] ✓ Ollama status checked (not running - manual start)
+[5:30:24 PM] [zco] ✓ Python Worker ready → http://127.0.0.1:8001
+[5:30:24 PM] [zco] ✓ Next.js ready → http://localhost:3000
 
-[5:30:24 PM] [znco] ✓ All services started
-[5:30:24 PM] [znco] Press Ctrl+C to shutdown
+[5:30:24 PM] [zco] ✓ All services started
+[5:30:24 PM] [zco] Press Ctrl+C to shutdown
 ```
 
 ### Services Started
@@ -119,8 +119,8 @@ pnpm znco
 
 ## Impact
 
-- **Before**: znco run failed on Windows with spawn error
-- **After**: znco run works on Windows, macOS, Linux
+- **Before**: zco run failed on Windows with spawn error
+- **After**: zco run works on Windows, macOS, Linux
 
 ## Unchanged
 
@@ -136,7 +136,7 @@ pnpm znco
 ## Architecture Preserved
 
 ```
-znco run (pnpm znco)
+zco run (pnpm zco)
     ├── shell: true ← Windows .cmd resolver
     │
     ├── Ollama (check existing instance)

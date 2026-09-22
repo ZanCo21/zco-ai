@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * znco run - LocalMind Development Environment Orchestrator
+ * zco run - ZanCo ChatBot Development Environment Orchestrator
  * Starts Next.js, Python Worker, and Ollama concurrently
  * Handles graceful shutdown with cache cleanup
  */
@@ -37,7 +37,7 @@ function log(prefix, message, color = colors.reset) {
 
 function banner() {
   console.log(`${colors.bright}${colors.cyan}╔══════════════════════════════════════════════╗${colors.reset}`);
-  console.log(`${colors.bright}${colors.cyan}║              LocalMind                       ║${colors.reset}`);
+  console.log(`${colors.bright}${colors.cyan}║              ZanCo ChatBot                   ║${colors.reset}`);
   console.log(`${colors.bright}${colors.cyan}║          Development Environment             ║${colors.reset}`);
   console.log(`${colors.bright}${colors.cyan}╚══════════════════════════════════════════════╝${colors.reset}`);
   console.log();
@@ -143,7 +143,7 @@ function spawnProcess(config) {
 async function startNextJs() {
   const portAvailable = await checkPortAvailable(3000);
   if (!portAvailable) {
-    log("znco", "Port 3000 is already in use", colors.red);
+    log("zco", "Port 3000 is already in use", colors.red);
     return false;
   }
 
@@ -159,18 +159,18 @@ async function startNextJs() {
 
   const ready = await waitForService("localhost", 3000, "/", 30);
   if (!ready) {
-    log("znco", "Next.js failed to start", colors.red);
+    log("zco", "Next.js failed to start", colors.red);
     return false;
   }
 
-  log("znco", "✓ Next.js ready → http://localhost:3000", colors.green);
+  log("zco", "✓ Next.js ready → http://localhost:3000", colors.green);
   return true;
 }
 
 async function startPythonWorker() {
   const portAvailable = await checkPortAvailable(8001);
   if (!portAvailable) {
-    log("znco", "Port 8001 is already in use", colors.red);
+    log("zco", "Port 8001 is already in use", colors.red);
     return false;
   }
 
@@ -186,11 +186,11 @@ async function startPythonWorker() {
 
   const ready = await waitForService("127.0.0.1", 8001, "/health", 15);
   if (!ready) {
-    log("znco", "Python Worker failed to start", colors.red);
+    log("zco", "Python Worker failed to start", colors.red);
     return false;
   }
 
-  log("znco", "✓ Python Worker ready → http://127.0.0.1:8001", colors.green);
+  log("zco", "✓ Python Worker ready → http://127.0.0.1:8001", colors.green);
   return true;
 }
 
@@ -198,20 +198,20 @@ async function handleOllama() {
   const isRunning = await checkOllamaRunning();
 
   if (isRunning) {
-    log("znco", "✓ Ollama already running → http://localhost:11434", colors.green);
+    log("zco", "✓ Ollama already running → http://localhost:11434", colors.green);
     managedProcesses.set("ollama", { name: "Ollama", process: null, owned: false });
     return true;
   }
 
   const portAvailable = await checkPortAvailable(11434);
   if (!portAvailable) {
-    log("znco", "Port 11434 is occupied by another process (not Ollama)", colors.red);
+    log("zco", "Port 11434 is occupied by another process (not Ollama)", colors.red);
     return false;
   }
 
-  log("znco", "Ollama not running. To start Ollama, run in another terminal:");
-  log("znco", "  ollama serve", colors.dim);
-  log("znco", "Proceeding without Ollama (chat will not work)...", colors.yellow);
+  log("zco", "Ollama not running. To start Ollama, run in another terminal:");
+  log("zco", "  ollama serve", colors.dim);
+  log("zco", "Proceeding without Ollama (chat will not work)...", colors.yellow);
 
   managedProcesses.set("ollama", { name: "Ollama", process: null, owned: false });
 
@@ -219,7 +219,7 @@ async function handleOllama() {
 }
 
 async function cleanupCache() {
-  log("znco", "Cleaning development cache...");
+  log("zco", "Cleaning development cache...");
 
   let cleaned = 0;
   let failed = 0;
@@ -229,21 +229,21 @@ async function cleanupCache() {
     if (existsSync(fullPath)) {
       try {
         rmSync(fullPath, { recursive: true, force: true });
-        log("znco", `✓ Removed ${cachePath}`);
+        log("zco", `✓ Removed ${cachePath}`);
         cleaned++;
       } catch (err) {
-        log("znco", `⚠ Could not remove ${cachePath}: ${err.message}`, colors.yellow);
+        log("zco", `⚠ Could not remove ${cachePath}: ${err.message}`, colors.yellow);
         failed++;
       }
     }
   }
 
   if (cleaned === 0 && failed === 0) {
-    log("znco", "No development cache found.");
+    log("zco", "No development cache found.");
   } else if (failed === 0) {
-    log("znco", `✓ Cache cleanup completed (${cleaned} items removed)`, colors.green);
+    log("zco", `✓ Cache cleanup completed (${cleaned} items removed)`, colors.green);
   } else {
-    log("znco", `Cache cleanup partially completed (${cleaned} removed, ${failed} failed)`, colors.yellow);
+    log("zco", `Cache cleanup partially completed (${cleaned} removed, ${failed} failed)`, colors.yellow);
   }
 }
 
@@ -252,12 +252,12 @@ async function shutdown() {
   isShuttingDown = true;
 
   console.log();
-  log("znco", "Shutting down...");
+  log("zco", "Shutting down...");
 
   // Terminate owned processes
   for (const [, { process: proc, owned, name }] of managedProcesses) {
     if (proc && owned) {
-      log("znco", `Stopping ${name}...`);
+      log("zco", `Stopping ${name}...`);
       proc.kill("SIGTERM");
     }
   }
@@ -275,7 +275,7 @@ async function shutdown() {
   // Cleanup cache
   await cleanupCache();
 
-  log("znco", "Shutdown complete.", colors.green);
+  log("zco", "Shutdown complete.", colors.green);
   process.exit(0);
 }
 
@@ -286,21 +286,21 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  log("znco", "Starting services...");
+  log("zco", "Starting services...");
   console.log();
 
   try {
     // Handle Ollama
     const ollamaOk = await handleOllama();
     if (!ollamaOk) {
-      log("znco", "Failed to verify Ollama status", colors.red);
+      log("zco", "Failed to verify Ollama status", colors.red);
       process.exit(1);
     }
 
     // Start Python Worker first (Next.js may call it)
     const pythonOk = await startPythonWorker();
     if (!pythonOk) {
-      log("znco", "Failed to start Python Worker", colors.red);
+      log("zco", "Failed to start Python Worker", colors.red);
       await shutdown();
       process.exit(1);
     }
@@ -308,16 +308,16 @@ async function main() {
     // Start Next.js
     const nextOk = await startNextJs();
     if (!nextOk) {
-      log("znco", "Failed to start Next.js", colors.red);
+      log("zco", "Failed to start Next.js", colors.red);
       await shutdown();
       process.exit(1);
     }
 
     console.log();
-    log("znco", "✓ All services started", colors.green);
-    log("znco", "Press Ctrl+C to shutdown");
+    log("zco", "✓ All services started", colors.green);
+    log("zco", "Press Ctrl+C to shutdown");
   } catch (err) {
-    log("znco", `Fatal error: ${err.message}`, colors.red);
+    log("zco", `Fatal error: ${err.message}`, colors.red);
     await shutdown();
     process.exit(1);
   }
