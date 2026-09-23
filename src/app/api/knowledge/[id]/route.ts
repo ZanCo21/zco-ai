@@ -4,11 +4,11 @@ import { knowledge, knowledgeChunk } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const item = await db
       .select()
@@ -38,19 +38,25 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    const { title, content } = await req.json();
+    const { id } = await params;
+    const body = await req.json();
+    const { title, content, originalFilename, mimeType, sourceType } = body;
+
+    const updateData: Record<string, unknown> = {
+      title,
+      updatedAt: new Date(),
+    };
+    if (content !== undefined) updateData.content = content;
+    if (originalFilename !== undefined) updateData.originalFilename = originalFilename;
+    if (mimeType !== undefined) updateData.mimeType = mimeType;
+    if (sourceType !== undefined) updateData.sourceType = sourceType;
 
     await db
       .update(knowledge)
-      .set({
-        title,
-        content,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(knowledge.id, id));
 
     return NextResponse.json({ id, title, content });
@@ -64,11 +70,11 @@ export async function PUT(
 }
 
 export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     // Cascade delete via schema foreign key
     await db.delete(knowledge).where(eq(knowledge.id, id));

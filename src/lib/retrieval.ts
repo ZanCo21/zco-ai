@@ -4,7 +4,6 @@
 
 import { db } from "@/db";
 import { knowledgeChunk } from "@/db/schema";
-import { eq } from "drizzle-orm";
 
 const WORKER_URL = process.env.PYTHON_WORKER_URL || "http://127.0.0.1:8001";
 
@@ -25,18 +24,25 @@ export interface RetrievalResult {
   relevant: boolean;
 }
 
+interface PythonRetrievalChunk {
+  chunk_index: number;
+  similarity: number;
+}
+
+interface PythonRetrievalResponse {
+  query: string;
+  results: PythonRetrievalChunk[];
+  threshold: number;
+  max_similarity: number | null;
+  relevant: boolean;
+}
+
 async function callRetrievalPython(
   chunks: Array<{ chunk_index: number; content: string; word_count: number }>,
   query: string,
   topK: number,
   threshold: number
-): Promise<RetrievalResult> {
-  // Call Python worker to build index and retrieve
-  // Since Python worker is stateless, we pass chunks each time
-
-  // For now, simulate retrieval by calling process endpoint
-  // In production, would add dedicated retrieval endpoint to Python worker
-
+): Promise<PythonRetrievalResponse> {
   const res = await fetch(`${WORKER_URL}/retrieve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -89,7 +95,7 @@ export async function retrieveFromKnowledge(
   );
 
   // Map results back to database IDs
-  const enrichedResults = result.results.map((r: any, idx: number) => {
+  const enrichedResults = result.results.map((r) => {
     const chunk = chunks[r.chunk_index];
     return {
       knowledgeId: chunk.knowledgeId,
@@ -104,8 +110,8 @@ export async function retrieveFromKnowledge(
   return {
     query,
     results: enrichedResults,
-    threshold: (result as any).threshold,
-    maxSimilarity: (result as any).max_similarity,
-    relevant: (result as any).relevant,
+    threshold: result.threshold,
+    maxSimilarity: result.max_similarity,
+    relevant: result.relevant,
   };
 }

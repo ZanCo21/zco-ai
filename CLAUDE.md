@@ -873,7 +873,17 @@ zco-ai/
 │   │
 │   ├── components/
 │   │   ├── ui/
-│   │   └── ...
+│   │   ├── layout/
+│   │   │   └── sidebar.tsx
+│   │   ├── chat/
+│   │   │   └── chat-interface.tsx
+│   │   └── knowledge/
+│   │       ├── knowledge-table.tsx
+│   │       ├── file-upload.tsx
+│   │       ├── add-knowledge-modal.tsx
+│   │       ├── update-knowledge-modal.tsx
+│   │       ├── delete-knowledge-modal.tsx
+│   │       └── view-knowledge-modal.tsx
 │   │
 │   ├── db/
 │   │   ├── index.ts
@@ -882,7 +892,9 @@ zco-ai/
 │   └── lib/
 │       ├── ai.ts
 │       ├── retrieval.ts
-│       └── python-worker.ts
+│       ├── python-worker.ts
+│       └── validations/
+│           └── knowledge.ts
 │
 ├── ai-worker/
 │   ├── main.py

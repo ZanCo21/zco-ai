@@ -27,12 +27,31 @@ export async function POST(req: NextRequest) {
     tempFilePath = join(tmpdir(), randomUUID());
     await writeFile(tempFilePath, Buffer.from(buffer));
 
-    // Convert to Markdown
-    const markdown = await callWorkerConvert(tempFilePath);
+    // Convert to Markdown & Process
+    let markdown = "";
+    let chunks: Array<{ chunk_index: number; content: string; word_count: number }> = [];
 
-    // Process (clean + chunk)
-    const processResult = await callWorkerProcess(markdown);
-    const chunks = processResult.chunks;
+    try {
+      markdown = await callWorkerConvert(tempFilePath);
+      const processResult = await callWorkerProcess(markdown);
+      chunks = processResult.chunks;
+    } catch (workerError) {
+      console.warn("Python worker unavailable, using fallback:", workerError);
+      try {
+        const textContent = Buffer.from(buffer).toString("utf-8");
+        const isPrintable = !/[\x00-\x08\x0E-\x1F]/.test(textContent.slice(0, 500));
+        markdown = isPrintable ? textContent : `Document: ${file.name}`;
+      } catch {
+        markdown = `Document: ${file.name}`;
+      }
+      chunks = [
+        {
+          chunk_index: 0,
+          content: markdown,
+          word_count: markdown.split(/\s+/).filter(Boolean).length || 1,
+        },
+      ];
+    }
 
     if (chunks.length === 0) {
       return NextResponse.json(

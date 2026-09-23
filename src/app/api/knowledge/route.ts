@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { knowledge, knowledgeChunk } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { knowledge } from "@/db/schema";
 import { randomUUID } from "crypto";
 
 export async function POST(req: NextRequest) {
@@ -37,7 +36,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const items = await db.select().from(knowledge).all();
     return NextResponse.json({ items });

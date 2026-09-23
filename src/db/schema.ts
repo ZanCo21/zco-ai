@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, blob } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
 export const knowledge = sqliteTable("knowledge", {

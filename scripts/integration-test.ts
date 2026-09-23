@@ -5,7 +5,7 @@
  * Tests: Knowledge CRUD, Retrieval, Chat flow
  */
 
-import fetch from "node-fetch";
+// Using native fetch in Node 18+
 
 const BASE_URL = "http://localhost:3000/api";
 const WORKER_URL = "http://127.0.0.1:8001";
