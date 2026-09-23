@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { knowledge } from "@/db/schema";
+import { knowledge, knowledgeChunk } from "@/db/schema";
 import { randomUUID } from "crypto";
+import { callWorkerProcess } from "@/lib/ai";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,6 +11,29 @@ export async function POST(req: NextRequest) {
     if (!title || !content) {
       return NextResponse.json(
         { error: "title and content required" },
+        { status: 400 }
+      );
+    }
+
+    // Process content into chunks
+    let chunks: Array<{ chunk_index: number; content: string; word_count: number }> = [];
+    try {
+      const processResult = await callWorkerProcess(content);
+      chunks = processResult.chunks;
+    } catch (workerError) {
+      console.warn("Python worker unavailable, using fallback:", workerError);
+      chunks = [
+        {
+          chunk_index: 0,
+          content,
+          word_count: content.split(/\s+/).filter(Boolean).length || 1,
+        },
+      ];
+    }
+
+    if (chunks.length === 0) {
+      return NextResponse.json(
+        { error: "No chunks generated from content" },
         { status: 400 }
       );
     }
@@ -26,7 +50,24 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
     });
 
-    return NextResponse.json({ id, title, content });
+    // Save chunks
+    for (const chunk of chunks) {
+      await db.insert(knowledgeChunk).values({
+        id: randomUUID(),
+        knowledgeId: id,
+        chunkIndex: chunk.chunk_index,
+        content: chunk.content,
+        wordCount: chunk.word_count,
+        createdAt: now,
+      });
+    }
+
+    return NextResponse.json({
+      id,
+      title,
+      content,
+      chunksCreated: chunks.length,
+    });
   } catch (error) {
     console.error("POST /api/knowledge error:", error);
     return NextResponse.json(
