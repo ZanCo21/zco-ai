@@ -16,8 +16,8 @@ export interface ProcessResult {
 
 export async function callWorkerProcess(
   markdown: string,
-  maxWords: number = 300,
-  overlapWords: number = 50
+  maxWords: number = 200,
+  overlapWords: number = 25
 ): Promise<ProcessResult> {
   const res = await fetch(`${WORKER_URL}/process`, {
     method: "POST",

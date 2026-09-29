@@ -38,6 +38,7 @@ class TfidfIndex:
         ngram_range: tuple[int, int] = (1, 1),
         min_df: int = 1,
         max_df: float = 1.0,
+        sublinear_tf: bool = True,
     ):
         """Initialize TF-IDF index configuration.
 
@@ -47,12 +48,16 @@ class TfidfIndex:
             ngram_range: Tokenizer n-gram range, e.g. (1, 2) for unigrams + bigrams.
             min_df: Minimum document frequency (count or fraction).
             max_df: Maximum document frequency (fraction of total docs).
+            sublinear_tf: Apply sublinear term frequency scaling (1 + log(TF)) to prevent
+                TF from being suppressed in long documents. Improves retrieval for both
+                short and long queries. Default: True.
         """
         self.max_features = max_features
         self.stop_words = stop_words if stop_words is not None else _STOP_WORDS
         self.ngram_range = ngram_range
         self.min_df = min_df
         self.max_df = max_df
+        self.sublinear_tf = sublinear_tf
 
         self.vectorizer: TfidfVectorizer | None = None
         self.matrix: np.ndarray | None = None
@@ -86,6 +91,7 @@ class TfidfIndex:
             max_df=self.max_df,
             lowercase=True,
             norm="l2",  # L2 norm for cosine similarity compatibility
+            sublinear_tf=self.sublinear_tf,  # Logarithmic TF scaling for long documents
         )
 
         # Fit and transform

@@ -104,6 +104,10 @@ class RetrieverService:
         Combines retrieval + threshold checking to determine if results
         are sufficiently relevant for downstream processing (e.g., LLM).
 
+        Applies dynamic threshold adjustment based on query length:
+        - Queries with 1-3 terms: lower threshold (0.05) to handle short queries
+        - Queries with 4+ terms: standard threshold
+
         Args:
             query: Query text.
             top_k: Number of results to retrieve. Uses config if not provided.
@@ -128,14 +132,23 @@ class RetrieverService:
         # Get raw results
         results = self.retrieve(query, top_k=top_k)
 
-        # Determine relevance
+        # Determine relevance with dynamic threshold adjustment
         max_sim = results[0]["similarity"] if results else 0.0
-        relevant = max_sim >= self.config.similarity_threshold
+
+        # Adjust threshold based on query length
+        # Short queries (1-3 words) get lower threshold
+        query_term_count = len(query.strip().split())
+        adjusted_threshold = self.config.similarity_threshold
+        if query_term_count <= 3:
+            # Scale threshold down for short queries: 50% reduction
+            adjusted_threshold = max(0.05, self.config.similarity_threshold * 0.5)
+
+        relevant = max_sim >= adjusted_threshold
 
         return {
             "query": query,
             "relevant": relevant,
-            "threshold": self.config.similarity_threshold,
+            "threshold": adjusted_threshold,
             "top_k": top_k,
             "max_similarity": max_sim if results else None,
             "results": results,

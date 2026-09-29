@@ -12,8 +12,8 @@ import re
 
 def chunk_text(
     text: str,
-    max_words: int = 300,
-    overlap_words: int = 50,
+    max_words: int = 200,
+    overlap_words: int = 25,
 ) -> list[dict]:
     """Split text into overlapping chunks for TF-IDF indexing.
 
@@ -27,8 +27,10 @@ def chunk_text(
 
     Args:
         text: Cleaned text (output of ``clean_text``).
-        max_words: Soft maximum words per chunk.
-        overlap_words: Words to repeat between consecutive chunks.
+        max_words: Soft maximum words per chunk (reduced from 300 to 200
+            to improve TF density and retrieval sensitivity for short queries).
+        overlap_words: Words to repeat between consecutive chunks
+            (reduced from 50 to 25 for sharper chunk boundaries).
 
     Returns:
         List of chunk dicts with keys ``chunk_index``, ``content``,
@@ -107,7 +109,7 @@ def chunk_text(
     return chunks
 
 
-def process_document(text: str, max_words: int = 300, overlap_words: int = 50) -> list[dict]:
+def process_document(text: str, max_words: int = 200, overlap_words: int = 25) -> list[dict]:
     """Pipeline: clean_text → chunk_text.
 
     Convenience wrapper that imports preprocessing internally to
@@ -115,8 +117,10 @@ def process_document(text: str, max_words: int = 300, overlap_words: int = 50) -
 
     Args:
         text: Raw Markdown string.
-        max_words: Soft max words per chunk.
-        overlap_words: Overlap between chunks.
+        max_words: Soft max words per chunk (default 200; reduced from 300
+            for better TF density in retrieval).
+        overlap_words: Overlap between chunks (default 25; reduced from 50
+            for sharper boundaries).
 
     Returns:
         List of chunk dicts.
