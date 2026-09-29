@@ -17,6 +17,7 @@ from preprocessing import clean_text
 from tfidf_service import TfidfIndex
 from retrieval import RetrieverService
 from config import RetrievalConfig
+from document_extraction import extract_document, ExtractionError
 
 
 class WorkerHandler(BaseHTTPRequestHandler):
@@ -58,18 +59,19 @@ class WorkerHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "internal server error"}, 500)
 
     def _handle_convert(self) -> None:
-        """Convert a file to Markdown via MarkItDown."""
+        """Convert a file to text/markdown with improved extraction."""
         data = self._read_json()
         file_path = data.get("file_path")
         if not file_path:
             self._send_json({"error": "file_path required"}, 400)
             return
         try:
-            markdown = convert_file(file_path)
+            # Use improved extraction service (pdfplumber + cleanup)
+            markdown = extract_document(file_path)
             self._send_json({"markdown": markdown})
         except FileNotFoundError as e:
             self._send_json({"error": str(e)}, 404)
-        except ValueError as e:
+        except (ValueError, ExtractionError) as e:
             self._send_json({"error": str(e)}, 400)
         except Exception as e:
             self._send_json({"error": str(e)}, 500)

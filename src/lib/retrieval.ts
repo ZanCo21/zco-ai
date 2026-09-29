@@ -79,9 +79,9 @@ export async function retrieveFromKnowledge(
     };
   }
 
-  // Format chunks for Python worker
-  const formattedChunks = chunks.map((c) => ({
-    chunk_index: c.chunkIndex,
+  // Format chunks for Python worker — use array index, not DB chunkIndex
+  const formattedChunks = chunks.map((c, index) => ({
+    chunk_index: index,
     content: c.content,
     word_count: c.wordCount,
   }));
