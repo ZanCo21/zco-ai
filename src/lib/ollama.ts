@@ -45,19 +45,29 @@ export async function ollamaHealth(): Promise<boolean> {
   }
 }
 
-export function buildRAGPrompt(query: string, context: string): string {
-  return `Berdasarkan konteks berikut, jawab pertanyaan dengan akurat dan faktual:
+export function buildRAGPrompt(
+  query: string,
+  context: string
+): string {
+  return `Anda adalah komponen penyusun jawaban dalam sistem knowledge base.
 
-Konteks:
+Tugas Anda HANYA menyusun jawaban berdasarkan informasi yang diberikan pada KONTEKS.
+
+KONTEKS:
 ${context}
 
-Pertanyaan: ${query}
+PERTANYAAN:
+${query}
 
-Petunjuk:
-- Jawab hanya berdasarkan konteks yang diberikan
-- Jika informasi tidak ada dalam konteks, katakan "Informasi tidak ditemukan dalam knowledge base"
-- Jangan mengarang atau menambahkan informasi di luar konteks
-- Berikan jawaban yang jelas dan ringkas
+ATURAN:
+1. Gunakan hanya informasi yang terdapat dalam KONTEKS.
+2. Jangan mencari, menebak, atau menambahkan fakta dari pengetahuan Anda sendiri.
+3. Jangan mengubah makna atau fakta dari KONTEKS.
+4. Anda boleh menyusun ulang kalimat agar lebih natural, jelas, dan mudah dipahami.
+5. Jika pertanyaan dapat dijawab berdasarkan KONTEKS, jawab secara langsung dan ringkas.
+6. Jika informasi yang dibutuhkan tidak terdapat dalam KONTEKS, jawab:
+   "Informasi yang diminta tidak ditemukan dalam knowledge base."
+7. Jangan menjelaskan proses retrieval, TF-IDF, cosine similarity, atau sistem internal.
 
-Jawaban:`;
+JAWABAN:`;
 }
