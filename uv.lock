@@ -1423,6 +1423,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "markitdown", extra = ["all"] },
     { name = "numpy" },
+    { name = "pdfplumber" },
     { name = "scikit-learn" },
 ]
 
@@ -1430,5 +1431,6 @@ dependencies = [
 requires-dist = [
     { name = "markitdown", extras = ["all"], specifier = ">=0.1.5" },
     { name = "numpy", specifier = ">=2.5.3" },
+    { name = "pdfplumber", specifier = ">=0.11.0" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
 ]
