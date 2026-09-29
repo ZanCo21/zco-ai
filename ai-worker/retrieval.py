@@ -82,7 +82,7 @@ class RetrieverService:
         results = []
         for chunk_idx, (chunk, sim) in enumerate(zip(self.index.get_chunks(), similarities)):
             results.append({
-                "chunk_index": chunk.get("chunk_index", chunk_idx),
+                "chunk_index": chunk_idx,
                 "content": chunk["content"],
                 "similarity": float(sim),
                 "word_count": chunk.get("word_count", 0),
