@@ -1,0 +1,79 @@
+services:
+  # Ollama - Local LLM runtime
+  ollama:
+    image: ollama/ollama:latest
+    container_name: zco-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zco-network
+
+  # Python AI Worker
+  ai-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: zco-ai-worker
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data/uploads:/app/data/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zco-network
+    depends_on:
+      - ollama
+
+  # Next.js Frontend & API
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zco-app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=./data/app.db
+      - PYTHON_WORKER_URL=http://ai-worker:8001
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma3:4b
+      - SIMILARITY_THRESHOLD=0.20
+      - TOP_K=3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zco-network
+    depends_on:
+      ai-worker:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+
+networks:
+  zco-network:
+    driver: bridge
+
+volumes:
+  ollama-models:
+    driver: local

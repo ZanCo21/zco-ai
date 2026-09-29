@@ -124,8 +124,8 @@ class WorkerHandler(BaseHTTPRequestHandler):
 
 
 def main(port: int = 8001) -> None:
-    server = HTTPServer(("127.0.0.1", port), WorkerHandler)
-    print(f"AI Worker running on http://127.0.0.1:{port}")
+    server = HTTPServer(("0.0.0.0", port), WorkerHandler)
+    print(f"AI Worker running on http://0.0.0.0:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

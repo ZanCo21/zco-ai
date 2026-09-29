@@ -3,7 +3,7 @@
  * Calls Python worker endpoints for document processing and retrieval
  */
 
-const WORKER_URL = process.env.PYTHON_WORKER_URL || "http://127.0.0.1:8001";
+const WORKER_URL = process.env.PYTHON_WORKER_URL || "http://localhost:8001";
 
 export interface ProcessResult {
   chunks: Array<{

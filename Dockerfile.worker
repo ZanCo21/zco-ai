@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install uv
+RUN pip install uv
+
+# Copy pyproject.toml and lock file if exists
+COPY pyproject.toml ./
+
+# Install dependencies with uv
+RUN uv pip install --system -e .
+
+# Copy worker code
+COPY ai-worker/ ./ai-worker/
+
+EXPOSE 8001
+
+CMD ["python", "ai-worker/main.py", "8001"]
