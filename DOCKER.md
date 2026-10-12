@@ -88,6 +88,9 @@ docker compose down -v
 
 ## Troubleshooting
 
+### `better-sqlite3` fails during image build
+The app image uses Node 22 because `better-sqlite3` 13 requires Node 22 or newer. Its native SQLite addon is checked during the image build. If the build fails while installing native dependencies, make sure Docker can reach the Alpine package repositories.
+
 ### Service not responding
 Check health:
 ```bash

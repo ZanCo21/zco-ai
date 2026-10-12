@@ -1,6 +1,9 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 WORKDIR /app
+
+# better-sqlite3 uses node-gyp to build its native addon.
+RUN apk add --no-cache python3 make g++
 
 # Install pnpm
 RUN npm install -g pnpm
@@ -9,7 +12,8 @@ RUN npm install -g pnpm
 COPY package.json pnpm-lock.yaml ./
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN npm_config_nodedir=/usr/local pnpm install --frozen-lockfile
+RUN node -e "const Database = require('better-sqlite3'); const db = new Database(':memory:'); db.prepare('SELECT 1').get(); db.close();"
 
 # Copy source
 COPY . .
@@ -18,9 +22,11 @@ COPY . .
 RUN pnpm build
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
+
+RUN apk add --no-cache libstdc++
 
 RUN npm install -g pnpm
 
