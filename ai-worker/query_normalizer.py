@@ -56,6 +56,8 @@ def normalize_query(query: str) -> str:
         return ""
 
     normalized = query.strip().lower()
+    # trailing question/sentence punctuation is noise ("apa itu mcar?" -> "mcar")
+    normalized = re.sub(r"[\s?!.,;:]+$", "", normalized)
 
     # Apply pattern removal in order
     for pattern in _PATTERNS:

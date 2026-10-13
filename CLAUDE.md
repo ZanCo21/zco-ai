@@ -289,6 +289,18 @@ PDF / DOCX / PPTX / XLSX / HTML / etc.
                  Markdown
 ```
 
+**PDFs are NOT converted with MarkItDown.** MarkItDown (pdfminer) reorders bullets, breaks tables and
+page boundaries. `ai-worker/pdf_extractor.py` (pdfplumber) rebuilds reading order, renders each table
+row as one self-describing line (`- Header: value | Header: value`, header inherited across pages),
+keeps code in fenced blocks and drops page numbers. MarkItDown remains the extractor for DOCX, PPTX,
+XLSX, HTML, etc., and the fallback for PDFs without a text layer.
+
+Post-extraction cleanup must stay **non-destructive** (`normalize_text`: whitespace / zero-width
+characters only). Never add heuristics that rewrite words or de-duplicate lines: an earlier
+"artifact cleaner" turned "menganalisis" into "is" and removed repeated code lines.
+
+The upload route must keep the original file extension on the temp file (extractors dispatch on it).
+
 Do not treat MarkItDown as an AI model.
 
 Its purpose is document conversion and extraction.
@@ -411,6 +423,27 @@ do not ask Ollama to invent an answer.
 Return a response indicating that the requested information was not found in the knowledge base.
 
 The threshold must be configurable rather than hard-coded throughout the application.
+
+### Two-path relevance gate (implemented in `ai-worker/retrieval.py`)
+
+Cosine similarity is length-normalized: a short question ("Apa itu MCAR?") scores ~0.08 against a
+150-word chunk that does define MCAR, even though every query term is present. Lowering
+`SIMILARITY_THRESHOLD` would also admit unrelated questions, so the gate has two paths:
+
+```text
+relevant  =  cosine >= SIMILARITY_THRESHOLD                        (strong match, default 0.20)
+          OR coverage >= COVERAGE_THRESHOLD and cosine >= MIN_SIMILARITY   (default 0.50 / 0.03)
+```
+
+`coverage` = IDF-weighted share of the query's content terms present in the chunk; terms that occur
+in no chunk count as uncovered, so off-topic queries stay low. Never add per-query-length threshold
+discounts (the old "halve the threshold for short queries" hack was removed). Both signals and the
+passing path (`relevance_reason`) are returned for retrieval transparency.
+
+Ranking uses `cosine * (0.5 + 0.5 * coverage)`, multiplied by `(1 + 4 * definition_match)` for
+"apa itu X"-style queries (`ai-worker/definitions.py`: acronym expansions, "X adalah ...").
+Stemming (`text_analysis.py`) is additive and light; dictionary stemmers (Sastrawi) were measured and
+rejected (no gain, 45 s cold start).
 
 ---
 
@@ -898,12 +931,17 @@ zco-ai/
 │
 ├── ai-worker/
 │   ├── main.py
+│   ├── config.py               # SIMILARITY_THRESHOLD, TOP_K, COVERAGE_THRESHOLD, MIN_SIMILARITY
+│   ├── document_extraction.py  # dispatcher: PDF -> pdf_extractor, others -> MarkItDown, text -> direct
+│   ├── pdf_extractor.py        # pdfplumber, structure-aware (tables, code, headings, page breaks)
 │   ├── markitdown_service.py
 │   ├── preprocessing.py
-│   ├── chunking.py
-│   ├── tfidf_service.py
-│   ├── retrieval.py
-│   └── ollama.py
+│   ├── chunking.py             # structure-preserving, heading path per chunk (default 150/20 words)
+│   ├── text_analysis.py        # tokenizer, light stemmer, stop words (TF-IDF analyzer)
+│   ├── tfidf_service.py        # TF-IDF index + term_coverage + definition_match
+│   ├── definitions.py          # definition intent / acronym-expansion detection
+│   ├── query_normalizer.py
+│   └── retrieval.py            # cosine ranking + two-path relevance gate
 │
 ├── data/
 │   ├── app.db
@@ -945,6 +983,8 @@ PYTHON_WORKER_URL=http://127.0.0.1:8001
 
 SIMILARITY_THRESHOLD=0.20
 TOP_K=3
+COVERAGE_THRESHOLD=0.50
+MIN_SIMILARITY=0.03
 ```
 
 Keep `.env` out of Git.

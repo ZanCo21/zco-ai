@@ -1,161 +1,183 @@
-"""Text chunking for the retrieval pipeline.
+"""Structure-aware text chunking for the retrieval pipeline.
 
-Splits cleaned Markdown into overlapping word-based chunks,
-respecting paragraph boundaries and carrying heading context
-into each chunk so retrieval doesn't lose section information.
+Splits cleaned Markdown into chunks of roughly ``max_words`` words while
+keeping meaningful units intact:
+
+* paragraphs / bullet lists / table rows keep their line breaks
+  (the previous implementation joined every word with a single space, which
+  destroyed code blocks, bullets and table rows),
+* fenced code blocks are kept whole when they fit,
+* oversized units are split on lines, then sentences, then words,
+* the heading path ("Section > Subsection") is prepended to every chunk so a
+  chunk stays self-describing and the section terms take part in TF-IDF,
+* the tail of the previous chunk (whole units, at most ``overlap_words``) is
+  repeated at the start of the next one.
 """
 
 from __future__ import annotations
 
 import re
 
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_FENCE_RE = re.compile(r"^\s*```")
 
-def chunk_text(
-    text: str,
-    max_words: int = 200,
-    overlap_words: int = 25,
-) -> list[dict]:
-    """Split text into overlapping chunks for TF-IDF indexing.
 
-    Strategy:
-    1. Split on paragraph boundaries (double newline).
-    2. Accumulate paragraphs until *max_words* is reached.
-    3. Emit a chunk, then back up by *overlap_words* for the next one.
-    4. Markdown headings (lines starting with #) are tracked; the most
-       recent heading is prepended to every chunk that doesn't already
-       start with one, so retrieval context is preserved.
+def _wc(text: str) -> int:
+    return len(text.split())
 
-    Args:
-        text: Cleaned text (output of ``clean_text``).
-        max_words: Soft maximum words per chunk (reduced from 300 to 200
-            to improve TF density and retrieval sensitivity for short queries).
-        overlap_words: Words to repeat between consecutive chunks
-            (reduced from 50 to 25 for sharper chunk boundaries).
+
+def _split_units(text: str) -> list[dict]:
+    """Split text into atomic units: heading | code | block (paragraph/list/table)."""
+    units: list[dict] = []
+    buf: list[str] = []
+    code: list[str] | None = None
+
+    def flush() -> None:
+        if buf:
+            units.append({"kind": "block", "text": "\n".join(buf).strip("\n")})
+            buf.clear()
+
+    for line in text.split("\n"):
+        if code is not None:
+            code.append(line)
+            if _FENCE_RE.match(line):
+                units.append({"kind": "code", "text": "\n".join(code)})
+                code = None
+            continue
+        if _FENCE_RE.match(line):
+            flush()
+            code = [line]
+            continue
+        m = _HEADING_RE.match(line)
+        if m:
+            flush()
+            units.append({"kind": "heading", "level": len(m.group(1)), "text": m.group(2)})
+        elif not line.strip():
+            flush()
+        else:
+            buf.append(line)
+    if code is not None:  # unterminated fence
+        units.append({"kind": "code", "text": "\n".join(code)})
+    flush()
+    return [u for u in units if u["text"].strip()]
+
+
+def _split_oversized(text: str, max_words: int) -> list[str]:
+    """Break a too-long unit on lines, then sentences, then words."""
+    if _wc(text) <= max_words:
+        return [text]
+    pieces: list[str] = []
+    for line in text.split("\n"):
+        if _wc(line) <= max_words:
+            pieces.append(line)
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+", line)
+        for s in sentences:
+            if _wc(s) <= max_words:
+                pieces.append(s)
+            else:
+                w = s.split()
+                pieces.extend(" ".join(w[i : i + max_words]) for i in range(0, len(w), max_words))
+    # re-pack consecutive pieces up to max_words
+    out: list[str] = []
+    cur: list[str] = []
+    n = 0
+    for p in pieces:
+        pw = _wc(p)
+        if cur and n + pw > max_words:
+            out.append("\n".join(cur))
+            cur, n = [], 0
+        cur.append(p)
+        n += pw
+    if cur:
+        out.append("\n".join(cur))
+    return out
+
+
+def chunk_text(text: str, max_words: int = 150, overlap_words: int = 20) -> list[dict]:
+    """Split text into overlapping, structure-preserving chunks.
 
     Returns:
-        List of chunk dicts with keys ``chunk_index``, ``content``,
-        ``word_count``.  Empty list for empty/whitespace-only input.
+        List of dicts with ``chunk_index``, ``content``, ``word_count`` and
+        ``section`` (heading path, "" if none). ``word_count`` counts the body
+        only, not the prepended heading path. Empty list for empty input.
     """
     if not text or not text.strip():
         return []
 
-    paragraphs = _split_paragraphs(text)
-    if not paragraphs:
-        return []
+    heading_stack: list[tuple[int, str]] = []
+    # each body item: (text, section_path_at_that_point)
+    items: list[tuple[str, str]] = []
 
-    # Flatten to (word, paragraph_break_after, heading_context) stream
-    words: list[str] = []
-    para_breaks: set[int] = set()  # indices after which a para break exists
-    heading_at: dict[int, str] = {}  # word-index → heading text active from here
+    def path() -> str:
+        # Markdown heading lines ("# A\n## B"): prepended verbatim to chunks
+        return "\n".join("#" * lvl + " " + h for lvl, h in heading_stack)
 
-    current_heading: str = ""
-    for para in paragraphs:
-        stripped = para.strip()
-        if not stripped:
+    for u in _split_units(text):
+        if u["kind"] == "heading":
+            while heading_stack and heading_stack[-1][0] >= u["level"]:
+                heading_stack.pop()
+            heading_stack.append((u["level"], u["text"]))
             continue
-        # detect heading
-        if re.match(r"^#{1,6}\s", stripped):
-            current_heading = stripped
+        for piece in _split_oversized(u["text"], max_words):
+            items.append((piece, path()))
 
-        start = len(words)
-        if current_heading and start not in heading_at:
-            heading_at[start] = current_heading
-
-        para_words = stripped.split()
-        words.extend(para_words)
-        para_breaks.add(len(words) - 1)
-
-    if not words:
-        return []
+    # a document that is only headings still deserves one chunk
+    if not items:
+        return [{"chunk_index": 0, "content": text.strip(), "word_count": _wc(text), "section": ""}]
 
     chunks: list[dict] = []
-    idx = 0
-    chunk_index = 0
+    cur: list[tuple[str, str]] = []
+    cur_words = 0
+    fresh = False  # cur holds at least one unit not yet emitted
 
-    while idx < len(words):
-        end = min(idx + max_words, len(words))
+    def emit() -> None:
+        section = cur[0][1]
+        body = "\n\n".join(t for t, _ in cur)
+        content = f"{section}\n\n{body}" if section else body
+        chunks.append(
+            {
+                "chunk_index": len(chunks),
+                "content": content,
+                "word_count": _wc(body),
+                "section": " > ".join(
+                    line.lstrip("#").strip() for line in section.split("\n") if line
+                ),
+            }
+        )
 
-        # try to break at paragraph boundary
-        if end < len(words):
-            best_break = _find_para_break(para_breaks, idx, end)
-            if best_break is not None:
-                end = best_break + 1  # include the word at break
+    for text_i, sec in items:
+        w = _wc(text_i)
+        section_changed = bool(cur) and sec != cur[-1][1] and cur_words >= max_words * 0.5
+        if cur and (cur_words + w > max_words or section_changed):
+            emit()
+            tail: list[tuple[str, str]] = []
+            tw = 0
+            if not section_changed and overlap_words > 0:
+                # overlap: reuse trailing whole units within the budget ...
+                for prev in reversed(cur):
+                    pw = _wc(prev[0])
+                    if tw + pw > overlap_words:
+                        break
+                    tail.insert(0, prev)
+                    tw += pw
+                # ... or, if the last unit is itself too big, its last words
+                last_text, last_sec = cur[-1]
+                if not tail and not last_text.lstrip().startswith("```"):
+                    words = last_text.split()[-overlap_words:]
+                    tail, tw = [(" ".join(words), last_sec)], len(words)
+            cur, cur_words, fresh = tail, tw, False
+        cur.append((text_i, sec))
+        cur_words += w
+        fresh = True
 
-        chunk_words = words[idx:end]
-        content = " ".join(chunk_words)
-
-        # prepend heading context if chunk doesn't start with one
-        heading = _active_heading(heading_at, idx)
-        if heading and not re.match(r"^#{1,6}\s", content):
-            content = heading + "\n\n" + content
-
-        wc = len(chunk_words)
-        if wc > 0:
-            chunks.append(
-                {
-                    "chunk_index": chunk_index,
-                    "content": content,
-                    "word_count": wc,
-                }
-            )
-            chunk_index += 1
-
-        if end >= len(words):
-            break
-
-        # advance with overlap
-        idx = max(end - overlap_words, idx + 1)
-
+    if cur and fresh:
+        emit()
     return chunks
 
 
-def process_document(text: str, max_words: int = 200, overlap_words: int = 25) -> list[dict]:
-    """Pipeline: clean_text → chunk_text.
-
-    Convenience wrapper that imports preprocessing internally to
-    avoid circular deps at module level.
-
-    Args:
-        text: Raw Markdown string.
-        max_words: Soft max words per chunk (default 200; reduced from 300
-            for better TF density in retrieval).
-        overlap_words: Overlap between chunks (default 25; reduced from 50
-            for sharper boundaries).
-
-    Returns:
-        List of chunk dicts.
-    """
+def process_document(text: str, max_words: int = 150, overlap_words: int = 20) -> list[dict]:
+    """Pipeline: clean_text -> chunk_text."""
     from preprocessing import clean_text
 
-    cleaned = clean_text(text)
-    return chunk_text(cleaned, max_words=max_words, overlap_words=overlap_words)
-
-
-# -- helpers ----------------------------------------------------------
-
-
-def _split_paragraphs(text: str) -> list[str]:
-    """Split text on double-newline boundaries."""
-    return re.split(r"\n{2,}", text)
-
-
-def _find_para_break(breaks: set[int], start: int, end: int) -> int | None:
-    """Find the latest paragraph break index in [start, end)."""
-    best = None
-    # search backwards from end for efficiency-enough at these sizes
-    for i in range(end - 1, start - 1, -1):
-        if i in breaks:
-            best = i
-            break
-    return best
-
-
-def _active_heading(heading_at: dict[int, str], pos: int) -> str:
-    """Return the heading active at word-position *pos*."""
-    active = ""
-    for k in sorted(heading_at):
-        if k <= pos:
-            active = heading_at[k]
-        else:
-            break
-    return active
+    return chunk_text(clean_text(text), max_words=max_words, overlap_words=overlap_words)

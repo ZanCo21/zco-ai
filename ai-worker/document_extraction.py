@@ -1,196 +1,139 @@
-"""Enhanced document extraction with layout-aware PDF handling.
+"""Document extraction dispatcher.
 
-Uses pdfplumber for PDFs (better structure preservation) and MarkItDown
-for other formats. Includes post-processing to clean extraction artifacts.
+* PDF  -> ``pdf_extractor`` (pdfplumber, structure aware); MarkItDown is only
+          a fallback when the PDF yields (almost) no text layer.
+* other formats (DOCX, PPTX, XLSX, HTML, ...) -> MarkItDown.
+* plain text (txt/md/csv/json/...) -> read directly (no conversion needed).
+
+Post-processing is deliberately NON-destructive (``normalize_text``): it never
+rewrites words and never drops lines. An earlier "artifact cleaner" that
+de-duplicated words/lines silently turned "menganalisis" into "is" and removed
+repeated code lines, so content-changing heuristics must not live here.
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
+
+PLAIN_TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".log", ".rst"}
+
+# A PDF page without a text layer (scan) should not pass as "extracted".
+_MIN_CHARS_PER_PAGE = 20
 
 
 class ExtractionError(Exception):
     """Raised on extraction failure."""
-    pass
 
 
-def extract_pdf_pdfplumber(file_path: str) -> str:
-    """Extract PDF text using pdfplumber (layout-aware).
+def normalize_text(text: str) -> str:
+    """Non-destructive normalization: encoding noise and whitespace only."""
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFC", text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\x0c", "\n\n")
+    # zero-width chars, soft hyphen, BOM, NBSP -> regular space
+    text = re.sub(r"[​‌‍⁠﻿­]", "", text)
+    text = text.replace(" ", " ")
 
-    pdfplumber preserves text structure better than basic PDF extractors,
-    especially for multi-column layouts and tables.
-
-    Args:
-        file_path: Path to PDF file.
-
-    Returns:
-        Extracted text as markdown-like format.
-
-    Raises:
-        ImportError: pdfplumber not installed.
-        Exception: Extraction failed.
-    """
-    import pdfplumber
-
-    text_parts = []
-
-    with pdfplumber.open(file_path) as pdf:
-        for page_num, page in enumerate(pdf.pages, 1):
-            # Extract text with layout preservation
-            text = page.extract_text()
-
-            if text:
-                text_parts.append(text)
-
-    return "\n\n".join(text_parts)
+    out: list[str] = []
+    in_code = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+        line = line.rstrip()
+        if not in_code:
+            # MarkItDown/pdf often emits justified text with runs of spaces
+            indent = re.match(r" *", line).group(0)
+            line = indent + re.sub(r" {2,}", " ", line[len(indent):])
+        out.append(line)
+    text = "\n".join(out)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def extract_pdf_markitdown(file_path: str) -> str:
-    """Extract using MarkItDown (fallback for complex PDFs).
-
-    Args:
-        file_path: Path to file.
-
-    Returns:
-        Extracted markdown text.
-
-    Raises:
-        Exception: Extraction failed.
-    """
+    """MarkItDown conversion (used for non-PDF formats and as a PDF fallback)."""
     from markitdown import MarkItDown
 
-    md = MarkItDown()
-    result = md.convert(file_path)
-    return result.markdown
+    return MarkItDown().convert(file_path).markdown
 
 
-def clean_extraction(text: str) -> str:
-    """Post-process extracted text to fix common artifacts.
+def extract_pdf_pdfplumber(file_path: str) -> str:
+    from pdf_extractor import extract_pdf
 
-    Fixes:
-    - Duplicate word patterns (e.g., "HewHewan" → "Hewan")
-    - Character corruption artifacts
-    - Excessive whitespace and line duplication
-    - Malformed list markers
-
-    Args:
-        text: Raw extracted text.
-
-    Returns:
-        Cleaned text.
-    """
-    if not text or not text.strip():
-        return ""
-
-    lines = []
-    seen_lines = set()
-
-    for line in text.split("\n"):
-        line = line.rstrip()
-
-        if not line:
-            lines.append("")
-            continue
-
-        # Skip exact duplicates (common artifact)
-        if line in seen_lines:
-            continue
-        seen_lines.add(line)
-
-        # Fix duplicate word patterns: "HewHewan" → "Hewan"
-        # Match pattern where word starts repeated at split point
-        def fix_duplicate_words(m):
-            word = m.group(1)
-            half = len(word) // 2
-            # Check if first half matches end of second half
-            if word[:half].lower() == word[half:].lower():
-                return word[half:]
-            return word
-
-        line = re.sub(
-            r"\b([a-zA-Z]{4,})([a-zA-Z]{2,})\b",
-            lambda m: m.group(2) if m.group(1).lower().endswith(m.group(2).lower()) else m.group(0),
-            line,
-        )
-
-        # Fix character corruption: "dak" → "tidak" in specific contexts
-        line = re.sub(r"\bdak\s+(memiliki|punya|adalah)", r"tidak \1", line)
-        line = re.sub(r"\bpas\s+(mengalami|dapat)", r"dapat \1", line)
-
-        # Clean up malformed list markers: "a)a)" → "a)"
-        line = re.sub(r"([a-zA-Z]\))\1+", r"\1", line)
-        line = re.sub(r"([a-zA-Z]\))\s+\1", r"\1", line)
-
-        # Collapse excessive spaces
-        line = re.sub(r"  +", " ", line)
-
-        lines.append(line)
-
-    # Remove consecutive blank lines (max 2)
-    result = []
-    blank_count = 0
-    for line in lines:
-        if not line.strip():
-            blank_count += 1
-            if blank_count <= 2:
-                result.append(line)
-        else:
-            blank_count = 0
-            result.append(line)
-
-    return "\n".join(result).strip()
+    return extract_pdf(file_path)
 
 
-def extract_document(file_path: str) -> str:
-    """Extract text from document file with intelligent format detection.
+def _page_count(file_path: str) -> int:
+    try:
+        import pdfplumber
 
-    Strategy:
-    1. For PDFs: Try pdfplumber first (layout-aware), fallback to MarkItDown
-    2. For other formats: Use MarkItDown
-    3. Post-process to clean extraction artifacts
+        with pdfplumber.open(file_path) as pdf:
+            return max(1, len(pdf.pages))
+    except Exception:
+        return 1
 
-    Args:
-        file_path: Path to document file.
 
-    Returns:
-        Extracted and cleaned text.
+def extract_document(file_path: str, original_filename: str | None = None) -> str:
+    """Extract text from *file_path* as normalized Markdown.
 
-    Raises:
-        FileNotFoundError: File does not exist.
-        ExtractionError: Extraction failed for all methods.
+    ``original_filename`` lets callers (whose temp file may lack an extension)
+    pass the real name; if neither has a usable extension, PDFs are still
+    detected by their ``%PDF-`` magic bytes.
     """
     path = Path(file_path)
-
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
-
     if not path.is_file():
         raise ValueError(f"Not a file: {file_path}")
 
-    is_pdf = path.suffix.lower() == ".pdf"
+    ext = (Path(original_filename).suffix if original_filename else path.suffix).lower()
+    if not ext or ext == ".bin":
+        with open(path, "rb") as fh:
+            if fh.read(5) == b"%PDF-":
+                ext = ".pdf"
 
-    # Try PDF extraction first for .pdf files
-    if is_pdf:
+    if ext in PLAIN_TEXT_EXTS:
+        raw = path.read_bytes()
+        for enc in ("utf-8-sig", "utf-16", "cp1252"):
+            try:
+                text = normalize_text(raw.decode(enc))
+                break
+            except UnicodeError:
+                continue
+        else:
+            raise ExtractionError(f"Cannot decode text file: {file_path}")
+        if not text:
+            raise ExtractionError(f"File is empty: {file_path}")
+        return text
+
+    if ext == ".pdf":
         try:
-            text = extract_pdf_pdfplumber(file_path)
-            if text and text.strip():
-                cleaned = clean_extraction(text)
-                if cleaned:
-                    return cleaned
-        except ImportError:
-            pass  # pdfplumber not available, try MarkItDown
+            text = normalize_text(extract_pdf_pdfplumber(file_path))
+        except Exception as e:  # corrupt structure etc. -> try MarkItDown
+            print(f"pdfplumber extraction failed: {e}; falling back to MarkItDown")
+            text = ""
+        if len(text) >= _MIN_CHARS_PER_PAGE * _page_count(file_path) * 0.25:
+            return text
+        # (almost) no text layer -> try MarkItDown before giving up
+        try:
+            fallback = normalize_text(extract_pdf_markitdown(file_path))
         except Exception as e:
-            print(f"pdfplumber extraction failed: {e}, trying fallback...")
+            raise ExtractionError(f"Extraction failed for {file_path}: {e}") from e
+        if len(fallback) > len(text):
+            text = fallback
+        if not text:
+            raise ExtractionError(
+                "PDF has no extractable text layer (scanned/image-only PDF?). "
+                "OCR is not supported."
+            )
+        return text
 
-    # Fallback to MarkItDown
     try:
-        text = extract_pdf_markitdown(file_path)
-        if text and text.strip():
-            cleaned = clean_extraction(text)
-            if cleaned:
-                return cleaned
+        text = normalize_text(extract_pdf_markitdown(file_path))
     except Exception as e:
         raise ExtractionError(f"Extraction failed for {file_path}: {e}") from e
-
-    raise ExtractionError(f"No extraction method produced output: {file_path}")
+    if not text:
+        raise ExtractionError(f"No extraction method produced output: {file_path}")
+    return text

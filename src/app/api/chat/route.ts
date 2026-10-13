@@ -1,64 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
 import { retrieveFromKnowledge } from "@/lib/retrieval";
-import { buildRAGPrompt, generateWithOllama } from "@/lib/ollama";
+import {
+  buildRAGPrompt,
+  generateWithOllama,
+  NOT_FOUND_ANSWER,
+} from "@/lib/ollama";
 
 export async function POST(req: NextRequest) {
   try {
     const { message } = await req.json();
 
-    if (!message) {
+    if (!message || typeof message !== "string" || !message.trim()) {
       return NextResponse.json(
         { error: "message required" },
         { status: 400 }
       );
     }
 
-    // Retrieve relevant chunks
-    const retrieval = await retrieveFromKnowledge(message, 3, 0.2);
+    // top-k and thresholds come from env (TOP_K, SIMILARITY_THRESHOLD, ...)
+    const retrieval = await retrieveFromKnowledge(message);
 
-    // Check relevance threshold
+    const trace = {
+      query: retrieval.query,
+      normalizedQuery: retrieval.normalizedQuery,
+      topK: retrieval.topK,
+      threshold: retrieval.threshold,
+      coverageThreshold: retrieval.coverageThreshold,
+      maxSimilarity: retrieval.maxSimilarity,
+      maxCoverage: retrieval.maxCoverage,
+      relevanceReason: retrieval.relevanceReason,
+    };
+
+    // Relevance gate runs BEFORE generation: never ask the LLM to improvise.
     if (!retrieval.relevant) {
       return NextResponse.json({
-        answer:
-          "Informasi yang diminta tidak ditemukan dalam knowledge base.",
+        answer: NOT_FOUND_ANSWER,
         sources: [],
-        retrieval: {
-          maxSimilarity: retrieval.maxSimilarity,
-          threshold: retrieval.threshold,
-        },
+        retrieval: trace,
       });
     }
 
-    // Build context from relevant chunks
-    const context = retrieval.results
-      .map((r) => r.content)
-      .join("\n\n");
+    const prompt = buildRAGPrompt(
+      message,
+      retrieval.results.map((r) => ({ title: r.title, content: r.content }))
+    );
+    const answer = (await generateWithOllama(prompt)).trim();
 
-    // Generate answer using Ollama
-    const prompt = buildRAGPrompt(message, context);
-    const answer = await generateWithOllama(prompt);
-
-    // Format sources
-    const sources = retrieval.results.map((r) => ({
+    const sources = retrieval.results.map((r, i) => ({
+      ref: i + 1,
       knowledgeId: r.knowledgeId,
       chunkId: r.chunkId,
-      title: r.chunkIndex.toString(),
+      title: r.title,
+      filename: r.filename,
+      chunkIndex: r.chunkIndex,
       similarity: r.similarity,
+      coverage: r.coverage,
     }));
 
     return NextResponse.json({
-      answer: answer.trim(),
-      sources,
-      retrieval: {
-        maxSimilarity: retrieval.maxSimilarity,
-        threshold: retrieval.threshold,
-      },
+      answer,
+      sources: answer === NOT_FOUND_ANSWER ? [] : sources,
+      retrieval: trace,
     });
   } catch (error) {
     console.error("POST /api/chat error:", error);
-    return NextResponse.json(
-      { error: "Chat failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Chat failed" }, { status: 500 });
   }
 }

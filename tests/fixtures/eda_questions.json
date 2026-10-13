@@ -1,0 +1,186 @@
+{
+  "answerable": [
+    {
+      "q": "Berapa ambang batas Z-score untuk menandai outlier?",
+      "must": [
+        "|Z| > 3"
+      ],
+      "answer_any": [
+        "3"
+      ]
+    },
+    {
+      "q": "apa rumus batas bawah dan batas atas metode IQR?",
+      "must": [
+        "Q1 - 1,5 x IQR"
+      ],
+      "answer_any": [
+        "Q1",
+        "1,5"
+      ]
+    },
+    {
+      "q": "Jelaskan apa itu masking effect pada Z-score",
+      "must": [
+        "Masking Effect"
+      ],
+      "answer_any": [
+        "mean",
+        "standar deviasi",
+        "terdistorsi"
+      ]
+    },
+    {
+      "q": "bagaimana cara mengatasi pencilan ekstrem yang gagal terdeteksi?",
+      "must": [
+        "Modified Z-Score"
+      ],
+      "answer_any": [
+        "IQR",
+        "Modified Z-Score",
+        "non-parametrik"
+      ]
+    },
+    {
+      "q": "Apa itu MCAR?",
+      "must": [
+        "Sensor IoT"
+      ],
+      "answer_any": [
+        "acak",
+        "tidak bergantung",
+        "random"
+      ]
+    },
+    {
+      "q": "sebutkan strategi menangani data MNAR",
+      "must": [
+        "missing indicator"
+      ],
+      "answer_any": [
+        "indikator",
+        "indicator"
+      ]
+    },
+    {
+      "q": "Kapan listwise deletion masih dapat dibenarkan?",
+      "must": [
+        "< 5%"
+      ],
+      "answer_any": [
+        "5%"
+      ]
+    },
+    {
+      "q": "Korelasi berapa yang dianggap multikolinearitas parah?",
+      "must": [
+        "0,80"
+      ],
+      "answer_any": [
+        "0,80",
+        "0.80"
+      ]
+    },
+    {
+      "q": "apa kelebihan violin plot dibanding box plot?",
+      "must": [
+        "multimodal"
+      ],
+      "answer_any": [
+        "multimodal",
+        "KDE",
+        "densitas"
+      ]
+    },
+    {
+      "q": "metode apa untuk menghitung VIF dan apa batasnya pada tahap seleksi fitur?",
+      "must": [
+        "VIF > 5"
+      ],
+      "answer_any": [
+        "5"
+      ]
+    },
+    {
+      "q": "Kenapa data leakage terjadi dan bagaimana mencegahnya?",
+      "must": [
+        "sebelum split",
+        "Isolasi data uji (test set) sebelum"
+      ],
+      "answer_any": [
+        "split",
+        "Pipeline",
+        "pemisahan"
+      ]
+    },
+    {
+      "q": "Apa target (y) pada dataset Give Me Some Credit?",
+      "must": [
+        "SeriousDlqin2yrs"
+      ],
+      "answer_any": [
+        "SeriousDlqin2yrs"
+      ]
+    },
+    {
+      "q": "Berapa jumlah observasi data latih pada studi kasus kredit?",
+      "must": [
+        "150.000"
+      ],
+      "answer_any": [
+        "150.000"
+      ]
+    },
+    {
+      "q": "Kolom Unnamed: 0 sebaiknya diapakan?",
+      "must": [
+        "Unnamed: 0"
+      ],
+      "answer_any": [
+        "drop",
+        "hapus",
+        "dibuang",
+        "Drop"
+      ]
+    },
+    {
+      "q": "Apa itu transformasi Yeo-Johnson dan kapan dipakai untuk skewness tinggi?",
+      "must": [
+        "Yeo-Johnson"
+      ],
+      "answer_any": [
+        "Box-Cox",
+        "Yeo-Johnson",
+        "|γ1| > 1"
+      ]
+    },
+    {
+      "q": "outlier yang valid seperti transaksi kartu kredit besar apakah dibuang?",
+      "must": [
+        "Jangan"
+      ],
+      "answer_any": [
+        "tidak",
+        "jangan",
+        "Jangan"
+      ]
+    },
+    {
+      "q": "Rumus korelasi Spearman?",
+      "must": [
+        "6 * Σd_i²"
+      ],
+      "answer_any": [
+        "Spearman",
+        "6"
+      ]
+    }
+  ],
+  "unanswerable": [
+    "Siapa presiden pertama Indonesia?",
+    "Bagaimana cara membuat nasi goreng?",
+    "Berapa harga bitcoin hari ini?",
+    "Jelaskan teori relativitas Einstein",
+    "Apa ibu kota Prancis?"
+  ]
+}

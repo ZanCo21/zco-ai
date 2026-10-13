@@ -12,7 +12,6 @@ import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from chunking import process_document
-from markitdown_service import MarkItDownError, convert_file
 from preprocessing import clean_text
 from tfidf_service import TfidfIndex
 from retrieval import RetrieverService
@@ -66,8 +65,9 @@ class WorkerHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "file_path required"}, 400)
             return
         try:
-            # Use improved extraction service (pdfplumber + cleanup)
-            markdown = extract_document(file_path)
+            # Structure-aware extraction (pdfplumber for PDF, MarkItDown otherwise).
+            # original_filename lets us pick the extractor when the temp file has no extension.
+            markdown = extract_document(file_path, data.get("original_filename"))
             self._send_json({"markdown": markdown})
         except FileNotFoundError as e:
             self._send_json({"error": str(e)}, 404)
@@ -80,8 +80,8 @@ class WorkerHandler(BaseHTTPRequestHandler):
         """Clean + chunk text. Accepts raw Markdown, returns chunks."""
         data = self._read_json()
         text = data.get("text", "")
-        max_words = data.get("max_words", 300)
-        overlap_words = data.get("overlap_words", 50)
+        max_words = data.get("max_words", 150)
+        overlap_words = data.get("overlap_words", 20)
         chunks = process_document(text, max_words=max_words, overlap_words=overlap_words)
         self._send_json({"chunks": chunks, "total_chunks": len(chunks)})
 
@@ -91,7 +91,9 @@ class WorkerHandler(BaseHTTPRequestHandler):
         chunks = data.get("chunks", [])
         query = data.get("query", "")
         top_k = data.get("top_k", 3)
-        threshold = data.get("threshold", 0.20)
+        threshold = data.get("threshold")
+        coverage_threshold = data.get("coverage_threshold")
+        min_similarity = data.get("min_similarity")
 
         if not chunks:
             self._send_json({"error": "chunks required"}, 400)
@@ -106,10 +108,12 @@ class WorkerHandler(BaseHTTPRequestHandler):
             index = TfidfIndex()
             index.fit(chunks)
 
-            # Configure retriever
+            # Configure retriever (None -> env var / default, see config.py)
             config = RetrievalConfig(
                 similarity_threshold=threshold,
                 top_k=top_k,
+                coverage_threshold=coverage_threshold,
+                min_similarity=min_similarity,
             )
             service = RetrieverService(index, config=config)
 
