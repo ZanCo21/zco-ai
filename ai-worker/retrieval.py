@@ -1,8 +1,26 @@
 """Cosine similarity-based retrieval service.
 
-Uses TF-IDF index to rank chunks by semantic similarity
-to user queries via cosine similarity scoring, with configurable
-relevance threshold to prevent low-confidence results reaching LLM.
+Uses the TF-IDF index to rank chunks by cosine similarity to user queries,
+with a configurable relevance gate that decides whether the LLM may be asked
+at all.
+
+Relevance gate (checked before generation)
+-------------------------------------------
+A query is *relevant* when the top-k results contain a chunk that satisfies
+either path:
+
+1. **cosine**   : ``cosine >= SIMILARITY_THRESHOLD`` (default 0.20, unchanged)
+2. **coverage** : ``coverage >= COVERAGE_THRESHOLD`` and
+                  ``cosine >= MIN_SIMILARITY``
+
+Why a second path: cosine is length-normalized, so a short question such as
+"Apa itu MCAR?" against a 150-word chunk that does define MCAR scores ~0.09
+even though *every* query term is present. Instead of lowering the cosine
+threshold (which would also admit unrelated queries), the second path asks a
+different question: "what IDF-weighted share of the query's terms occur in this
+chunk?". Out-of-vocabulary terms count as uncovered, so off-topic queries
+("cara membuat nasi goreng") that only match generic words stay below it.
+Both signals are returned for transparency.
 """
 
 from __future__ import annotations
@@ -10,8 +28,20 @@ from __future__ import annotations
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
+from definitions import has_definition_intent
 from config import RetrievalConfig, get_default_config
+from query_normalizer import normalize_query
 from tfidf_service import TfidfIndex
+
+# Rank = cosine * (1 - w + w * coverage). Coverage breaks ties between chunks
+# with similar cosine in favour of the one that actually contains the query's
+# terms (e.g. the definition row rather than a summary mentioning one term).
+COVERAGE_RANK_WEIGHT = 0.5
+
+# For "apa itu X" queries: rank *= 1 + DEFINITION_BOOST * (share of query terms
+# the chunk defines). A chunk that defines the term (``MCAR (Missing Completely
+# at Random)``, "X adalah ...") then beats chunks that merely mention it often.
+DEFINITION_BOOST = 4.0
 
 
 class RetrieverService:
@@ -22,164 +52,123 @@ class RetrieverService:
         tfidf_index: TfidfIndex,
         config: RetrievalConfig | None = None,
     ):
-        """Initialize retriever with a fitted TF-IDF index.
-
-        Args:
-            tfidf_index: Fitted TfidfIndex instance.
-            config: Retrieval configuration (threshold, top_k).
-                Uses default if not provided.
-
-        Raises:
-            ValueError: If index is not fitted.
-        """
         if tfidf_index.matrix is None:
             raise ValueError("TfidfIndex must be fitted before creating RetrieverService")
         self.index = tfidf_index
         self.config = config or get_default_config()
 
-    def retrieve(self, query: str, top_k: int | None = None) -> list[dict]:
-        """Retrieve top-k relevant chunks for a query (raw results).
+    def _score(self, query: str) -> tuple[np.ndarray, np.ndarray | None]:
+        """Return (cosine, coverage|None) per chunk for an already-normalized query."""
+        query_vec = self.index.transform_query(query)
+        if np.allclose(query_vec, 0):
+            return np.zeros(self.index.matrix.shape[0]), None
+        cos = cosine_similarity(query_vec.reshape(1, -1), self.index.get_matrix())[0]
+        return cos, self.index.term_coverage(query)
 
-        Args:
-            query: Query text.
-            top_k: Number of top results to return. Uses config if not provided.
+    def retrieve(self, query: str, top_k: int | None = None) -> list[dict]:
+        """Retrieve top-k chunks (raw results, ranked).
 
         Returns:
-            List of result dicts, sorted by similarity descending.
-            Each dict contains: chunk_index, content, similarity, word_count.
+            List of dicts sorted by rank: chunk_index, content, similarity
+            (cosine), coverage (or None), word_count.
 
         Raises:
             ValueError: If top_k <= 0.
         """
         if top_k is None:
             top_k = self.config.top_k
-
         if top_k <= 0:
             raise ValueError("top_k must be > 0")
-
-        # Handle empty/whitespace query
         if not query or not query.strip():
             return []
 
-        # Transform query to TF-IDF vector
-        query_vec = self.index.transform_query(query)
+        # Strip question scaffolding ("apa yang dimaksud ...") but never
+        # normalize a query into nothing.
+        normalized = normalize_query(query) or query
 
-        # If query vector is all zeros (no vocab overlap), return empty
-        if np.allclose(query_vec, 0):
+        cos, cov = self._score(normalized)
+        if not np.any(cos > 0):
             return []
 
-        # Get matrix (n_chunks × n_features)
-        matrix = self.index.get_matrix()
+        if cov is not None:
+            rank = cos * (1 - COVERAGE_RANK_WEIGHT + COVERAGE_RANK_WEIGHT * cov)
+        else:
+            rank = cos
+        if has_definition_intent(query):
+            defined = self.index.definition_match(normalized)
+            if defined is not None:
+                rank = rank * (1 + DEFINITION_BOOST * defined)
+        order = np.argsort(-rank, kind="stable")[:top_k]
 
-        # Compute cosine similarity: query_vec vs each chunk
-        # Reshape query_vec to (1, n_features) for broadcasting
-        similarities = cosine_similarity(
-            query_vec.reshape(1, -1),
-            matrix
-        )[0]  # Extract 1D array
+        chunks = self.index.get_chunks()
+        return [
+            {
+                "chunk_index": int(i),
+                "content": chunks[i]["content"],
+                "similarity": float(cos[i]),
+                "coverage": float(cov[i]) if cov is not None else None,
+                "word_count": chunks[i].get("word_count", 0),
+            }
+            for i in order
+            if cos[i] > 0
+        ]
 
-        # Prepare results with scores
-        results = []
-        for chunk_idx, (chunk, sim) in enumerate(zip(self.index.get_chunks(), similarities)):
-            results.append({
-                "chunk_index": chunk_idx,
-                "content": chunk["content"],
-                "similarity": float(sim),
-                "word_count": chunk.get("word_count", 0),
-            })
-
-        # Sort by similarity descending
-        results.sort(key=lambda x: x["similarity"], reverse=True)
-
-        # Return top_k
-        return results[:top_k]
-
-    def retrieve_with_relevance(
-        self,
-        query: str,
-        top_k: int | None = None,
-    ) -> dict:
-        """Retrieve chunks with relevance assessment.
-
-        Combines retrieval + threshold checking to determine if results
-        are sufficiently relevant for downstream processing (e.g., LLM).
-
-        Applies dynamic threshold adjustment based on query length:
-        - Queries with 1-3 terms: lower threshold (0.05) to handle short queries
-        - Queries with 4+ terms: standard threshold
-
-        Args:
-            query: Query text.
-            top_k: Number of results to retrieve. Uses config if not provided.
+    def retrieve_with_relevance(self, query: str, top_k: int | None = None) -> dict:
+        """Retrieve chunks and decide whether they are relevant enough for the LLM.
 
         Returns:
-            Dict with structure:
             {
-                "query": str,
-                "relevant": bool,
-                "threshold": float,
-                "top_k": int,
-                "max_similarity": float or None,
+                "query": str, "normalized_query": str,
+                "relevant": bool, "relevance_reason": "cosine" | "coverage" | "none",
+                "threshold": float, "coverage_threshold": float, "top_k": int,
+                "max_similarity": float | None, "max_coverage": float | None,
                 "results": list[dict],
             }
-
-            "relevant" is True iff max(similarity) >= threshold.
-            Results are always included (for debugging).
+        Results are always included (for debugging / the retrieval inspector).
         """
         if top_k is None:
             top_k = self.config.top_k
 
-        # Get raw results
         results = self.retrieve(query, top_k=top_k)
+        cfg = self.config
 
-        # Determine relevance with dynamic threshold adjustment
-        max_sim = results[0]["similarity"] if results else 0.0
+        reason = "none"
+        if any(r["similarity"] >= cfg.similarity_threshold for r in results):
+            reason = "cosine"
+        elif any(
+            r["coverage"] is not None
+            and r["coverage"] >= cfg.coverage_threshold
+            and r["similarity"] >= cfg.min_similarity
+            for r in results
+        ):
+            reason = "coverage"
 
-        # Adjust threshold based on query length
-        # Short queries (1-3 words) get lower threshold
-        query_term_count = len(query.strip().split())
-        adjusted_threshold = self.config.similarity_threshold
-        if query_term_count <= 3:
-            # Scale threshold down for short queries: 50% reduction
-            adjusted_threshold = max(0.05, self.config.similarity_threshold * 0.5)
-
-        relevant = max_sim >= adjusted_threshold
-
+        coverages = [r["coverage"] for r in results if r["coverage"] is not None]
         return {
             "query": query,
-            "relevant": relevant,
-            "threshold": adjusted_threshold,
+            "normalized_query": normalize_query(query),
+            "relevant": reason != "none",
+            "relevance_reason": reason,
+            "threshold": cfg.similarity_threshold,
+            "coverage_threshold": cfg.coverage_threshold,
             "top_k": top_k,
-            "max_similarity": max_sim if results else None,
+            "max_similarity": max((r["similarity"] for r in results), default=None),
+            "max_coverage": max(coverages) if coverages else None,
             "results": results,
         }
 
 
-def is_relevant(
-    results: list[dict],
-    threshold: float,
-) -> bool:
-    """Check if retrieval results pass relevance threshold.
-
-    Args:
-        results: List of retrieval result dicts (with "similarity" key).
-        threshold: Similarity threshold [0, 1].
-
-    Returns:
-        True iff highest similarity >= threshold.
-        False if results empty or threshold violated.
+def is_relevant(results: list[dict], threshold: float) -> bool:
+    """Check if retrieval results pass the cosine threshold.
 
     Raises:
         ValueError: If threshold not in [0, 1].
     """
     if not (0 <= threshold <= 1):
         raise ValueError(f"threshold must be in [0, 1], got {threshold}")
-
     if not results:
         return False
-
-    max_sim = results[0]["similarity"]
-    return max_sim >= threshold
+    return max(r["similarity"] for r in results) >= threshold
 
 
 def retrieve(
@@ -187,15 +176,5 @@ def retrieve(
     query: str,
     config: RetrievalConfig | None = None,
 ) -> dict:
-    """Convenience function for one-off retrieval with relevance.
-
-    Args:
-        tfidf_index: Fitted TfidfIndex instance.
-        query: Query text.
-        config: Retrieval configuration. Uses default if not provided.
-
-    Returns:
-        Result dict with query, relevant, threshold, top_k, results.
-    """
-    service = RetrieverService(tfidf_index, config=config)
-    return service.retrieve_with_relevance(query)
+    """Convenience function for one-off retrieval with relevance."""
+    return RetrieverService(tfidf_index, config=config).retrieve_with_relevance(query)

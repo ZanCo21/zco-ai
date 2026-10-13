@@ -3,7 +3,7 @@ import { retrieveFromKnowledge } from "@/lib/retrieval";
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, topK = 3 } = await req.json();
+    const { query, topK } = await req.json();
 
     if (!query) {
       return NextResponse.json(
@@ -14,13 +14,7 @@ export async function POST(req: NextRequest) {
 
     const result = await retrieveFromKnowledge(query, topK);
 
-    return NextResponse.json({
-      query: result.query,
-      results: result.results,
-      threshold: result.threshold,
-      maxSimilarity: result.maxSimilarity,
-      relevant: result.relevant,
-    });
+    return NextResponse.json(result);
   } catch (error) {
     console.error("POST /api/retrieval error:", error);
     return NextResponse.json(

@@ -16,8 +16,8 @@ export interface ProcessResult {
 
 export async function callWorkerProcess(
   markdown: string,
-  maxWords: number = 200,
-  overlapWords: number = 25
+  maxWords: number = 150,
+  overlapWords: number = 20
 ): Promise<ProcessResult> {
   const res = await fetch(`${WORKER_URL}/process`, {
     method: "POST",
@@ -36,11 +36,17 @@ export async function callWorkerProcess(
   return res.json();
 }
 
-export async function callWorkerConvert(filePath: string): Promise<string> {
+export async function callWorkerConvert(
+  filePath: string,
+  originalFilename?: string
+): Promise<string> {
   const res = await fetch(`${WORKER_URL}/convert`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file_path: filePath }),
+    body: JSON.stringify({
+      file_path: filePath,
+      original_filename: originalFilename,
+    }),
   });
 
   if (!res.ok) {

@@ -1,7 +1,7 @@
 """Text preprocessing for knowledge base documents.
 
-Cleans raw Markdown output from MarkItDown while preserving
-useful structure (headings, paragraphs) for downstream chunking.
+Cleans raw Markdown output while preserving useful structure (headings,
+paragraphs, code indentation, nested lists) for downstream chunking.
 """
 
 import re
@@ -10,10 +10,11 @@ import re
 def clean_text(text: str) -> str:
     """Clean raw Markdown text for chunking.
 
-    - Normalizes whitespace (tabs → spaces, trailing spaces)
+    - Normalizes line endings and tabs
+    - Strips trailing whitespace; collapses inner runs of spaces but keeps
+      leading indentation so code blocks and nested lists survive
     - Collapses runs of 3+ blank lines to 2
     - Strips leading/trailing whitespace
-    - Preserves Markdown headings and paragraph boundaries
 
     Args:
         text: Raw Markdown string.
@@ -24,16 +25,15 @@ def clean_text(text: str) -> str:
     if not text or not text.strip():
         return ""
 
-    # tabs → single space
-    text = text.replace("\t", " ")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    # collapse multiple spaces (not newlines) into one
-    text = re.sub(r"[^\S\n]+", " ", text)
+    cleaned: list[str] = []
+    for line in text.split("\n"):
+        line = line.replace("\t", "    ").rstrip()
+        indent = line[: len(line) - len(line.lstrip(" "))]
+        cleaned.append(indent + re.sub(r" {2,}", " ", line[len(indent):]))
+    text = "\n".join(cleaned)
 
-    # strip trailing whitespace per line
-    text = re.sub(r" +$", "", text, flags=re.MULTILINE)
-
-    # collapse 3+ consecutive blank lines → 2 (keeps paragraph gaps)
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text.strip()

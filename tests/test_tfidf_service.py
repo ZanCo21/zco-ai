@@ -22,7 +22,7 @@ from tfidf_service import TfidfIndex
 
 def test_init_default():
     index = TfidfIndex()
-    assert index.max_features == 5000
+    assert index.max_features is None  # no vocabulary cap: capping drops the rarest (most discriminative) terms
     assert index.vectorizer is None
     assert index.matrix is None
     assert index.chunks is None

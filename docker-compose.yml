@@ -57,6 +57,8 @@ services:
       - OLLAMA_MODEL=gemma3:4b
       - SIMILARITY_THRESHOLD=0.20
       - TOP_K=3
+      - COVERAGE_THRESHOLD=0.50
+      - MIN_SIMILARITY=0.03
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 10s

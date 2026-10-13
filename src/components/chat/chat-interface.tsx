@@ -8,6 +8,8 @@ interface ChatSource {
   knowledgeId: string;
   chunkId: string;
   title: string;
+  ref?: number;
+  filename?: string | null;
   similarity: number;
 }
 
@@ -170,7 +172,10 @@ export function ChatInterface() {
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs"
                           >
                             <FileText className="w-3 h-3 text-slate-400" />
-                            <span>Chunk #{src.title}</span>
+                            <span title={src.filename ?? src.title}>
+                              {src.ref ? `[${src.ref}] ` : ""}
+                              {src.title}
+                            </span>
                             <span className="text-indigo-600 font-medium">
                               ({(src.similarity * 100).toFixed(0)}%)
                             </span>

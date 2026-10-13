@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { knowledge, knowledgeChunk } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
+import { callWorkerProcess } from "@/lib/ai";
 
 export async function GET(
   _req: NextRequest,
@@ -54,10 +56,44 @@ export async function PUT(
     if (mimeType !== undefined) updateData.mimeType = mimeType;
     if (sourceType !== undefined) updateData.sourceType = sourceType;
 
-    await db
-      .update(knowledge)
-      .set(updateData)
-      .where(eq(knowledge.id, id));
+    // Edited content must be re-chunked, otherwise retrieval keeps serving the
+    // stale chunks of the previous version. Chunk first (may throw) so a worker
+    // failure leaves the record untouched.
+    let newChunks: Array<{ chunk_index: number; content: string; word_count: number }> | null = null;
+    if (content !== undefined) {
+      try {
+        newChunks = (await callWorkerProcess(content)).chunks;
+      } catch (workerError) {
+        console.warn("Python worker unavailable, using single chunk:", workerError);
+        newChunks = [
+          {
+            chunk_index: 0,
+            content,
+            word_count: content.split(/\s+/).filter(Boolean).length || 1,
+          },
+        ];
+      }
+    }
+
+    db.transaction((tx) => {
+      tx.update(knowledge).set(updateData).where(eq(knowledge.id, id)).run();
+      if (newChunks) {
+        const now = new Date();
+        tx.delete(knowledgeChunk).where(eq(knowledgeChunk.knowledgeId, id)).run();
+        for (const chunk of newChunks) {
+          tx.insert(knowledgeChunk)
+            .values({
+              id: randomUUID(),
+              knowledgeId: id,
+              chunkIndex: chunk.chunk_index,
+              content: chunk.content,
+              wordCount: chunk.word_count,
+              createdAt: now,
+            })
+            .run();
+        }
+      }
+    });
 
     return NextResponse.json({ id, title, content });
   } catch (error) {
