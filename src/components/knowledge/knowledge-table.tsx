@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, FileText, SquarePen, Trash2, Eye, BookOpen } from "lucide-react";
+import Link from "next/link";
+import { Plus, FileText, SquarePen, Trash2, ChevronRight, BookOpen } from "lucide-react";
 import { KnowledgeItem, UpdateKnowledgeModal } from "./update-knowledge-modal";
 import { AddKnowledgeModal } from "./add-knowledge-modal";
 import { DeleteKnowledgeModal } from "./delete-knowledge-modal";
@@ -213,14 +214,14 @@ export function KnowledgeTable({ initialItems }: KnowledgeTableProps) {
                       {/* Actions */}
                       <td className="py-4 px-6 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleView(item)}
+                          <Link
+                            href={`/knowledge/${item.id}`}
                             className="w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50/50 flex items-center justify-center transition-colors"
-                            title="View knowledge details"
+                            title="Open details: file information, extracted text and chunks"
+                            aria-label={`Open details of ${item.title}`}
                           >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </Link>
                           <button
                             type="button"
                             onClick={() => handleEdit(item)}
