@@ -16,7 +16,9 @@ from preprocessing import clean_text
 from tfidf_service import TfidfIndex
 from retrieval import RetrieverService
 from config import RetrievalConfig
-from document_extraction import extract_document, ExtractionError
+from document_extraction import extract_document, ExtractionError, page_count
+from language import count_words, detect_language
+from suggestions import suggest_questions
 
 
 class WorkerHandler(BaseHTTPRequestHandler):
@@ -51,6 +53,8 @@ class WorkerHandler(BaseHTTPRequestHandler):
                 self._handle_process()
             elif self.path == "/retrieve":
                 self._handle_retrieve()
+            elif self.path == "/suggest":
+                self._handle_suggest()
             else:
                 self._send_json({"error": "not found"}, 404)
         except Exception:
@@ -67,8 +71,16 @@ class WorkerHandler(BaseHTTPRequestHandler):
         try:
             # Structure-aware extraction (pdfplumber for PDF, MarkItDown otherwise).
             # original_filename lets us pick the extractor when the temp file has no extension.
-            markdown = extract_document(file_path, data.get("original_filename"))
-            self._send_json({"markdown": markdown})
+            original_filename = data.get("original_filename")
+            markdown = extract_document(file_path, original_filename)
+            self._send_json(
+                {
+                    "markdown": markdown,
+                    "page_count": page_count(file_path, original_filename),
+                    "word_count": count_words(markdown),
+                    "language": detect_language(markdown),
+                }
+            )
         except FileNotFoundError as e:
             self._send_json({"error": str(e)}, 404)
         except (ValueError, ExtractionError) as e:
@@ -83,7 +95,38 @@ class WorkerHandler(BaseHTTPRequestHandler):
         max_words = data.get("max_words", 150)
         overlap_words = data.get("overlap_words", 20)
         chunks = process_document(text, max_words=max_words, overlap_words=overlap_words)
-        self._send_json({"chunks": chunks, "total_chunks": len(chunks)})
+        self._send_json(
+            {
+                "chunks": chunks,
+                "total_chunks": len(chunks),
+                "word_count": count_words(text),
+                "language": detect_language(text),
+            }
+        )
+
+    def _handle_suggest(self) -> None:
+        """Suggested questions that pass the retrieval relevance gate."""
+        data = self._read_json()
+        chunks = data.get("chunks", [])
+        if not chunks:
+            self._send_json({"questions": []})
+            return
+        try:
+            config = RetrievalConfig(
+                similarity_threshold=data.get("threshold"),
+                top_k=data.get("top_k"),
+                coverage_threshold=data.get("coverage_threshold"),
+                min_similarity=data.get("min_similarity"),
+            )
+            questions = suggest_questions(
+                chunks,
+                limit=int(data.get("limit", 3)),
+                seed=data.get("seed"),
+                config=config,
+            )
+            self._send_json({"questions": questions})
+        except ValueError as e:
+            self._send_json({"error": str(e)}, 400)
 
     def _handle_retrieve(self) -> None:
         """Retrieve top-k relevant chunks using TF-IDF + cosine similarity."""

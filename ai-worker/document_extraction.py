@@ -75,6 +75,20 @@ def _page_count(file_path: str) -> int:
         return 1
 
 
+def page_count(file_path: str, original_filename: str | None = None) -> int | None:
+    """Number of pages for PDFs (shown in file details); ``None`` for other formats."""
+    ext = (Path(original_filename).suffix if original_filename else Path(file_path).suffix).lower()
+    if ext != ".pdf":
+        return None
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(file_path) as pdf:
+            return len(pdf.pages)
+    except Exception:
+        return None
+
+
 def extract_document(file_path: str, original_filename: str | None = None) -> str:
     """Extract text from *file_path* as normalized Markdown.
 
