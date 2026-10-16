@@ -4,7 +4,7 @@
  */
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
+export const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
 
 export const NOT_FOUND_ANSWER =
   "Informasi yang diminta tidak ditemukan dalam knowledge base.";
@@ -14,17 +14,29 @@ export interface OllamaGenerateResponse {
   done: boolean;
 }
 
-export async function generateWithOllama(prompt: string): Promise<string> {
+export interface GenerateOptions {
+  /** Ollama structured output: "json" or a JSON schema object. */
+  format?: "json" | Record<string, unknown>;
+  temperature?: number;
+  signal?: AbortSignal;
+}
+
+export async function generateWithOllama(
+  prompt: string,
+  { format, temperature = 0.1, signal }: GenerateOptions = {}
+): Promise<string> {
   const res = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal,
     body: JSON.stringify({
       model: OLLAMA_MODEL,
       prompt,
       stream: false,
+      ...(format ? { format } : {}),
       options: {
         // Factual extraction, not creative writing: keep sampling tight.
-        temperature: 0.1,
+        temperature,
         top_p: 0.9,
         // Ollama's default context window (4096) silently truncates the
         // *start* of long prompts, i.e. the instructions. Be explicit.
@@ -34,7 +46,14 @@ export async function generateWithOllama(prompt: string): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`Ollama generate failed: ${res.statusText}`);
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body && typeof body.error === "string") detail = body.error;
+    } catch {
+      // keep statusText
+    }
+    throw new Error(`Ollama generate failed: ${detail}`);
   }
 
   const data: OllamaGenerateResponse = await res.json();

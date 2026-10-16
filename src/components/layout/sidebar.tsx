@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, BookOpen, Sparkles, Menu, X } from "lucide-react";
+import { MessageSquare, BookOpen, GraduationCap, Sparkles, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -22,6 +22,11 @@ const navItems: NavItem[] = [
     label: "Knowledge",
     href: "/knowledge",
     icon: BookOpen,
+  },
+  {
+    label: "Study Mode",
+    href: "/study",
+    icon: GraduationCap,
   },
 ];
 
