@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { knowledge, knowledgeChunk } from "@/db/schema";
+import { knowledge } from "@/db/schema";
 import { randomUUID } from "crypto";
-import { callWorkerProcess } from "@/lib/ai";
+import { callWorkerProcess, type WorkerChunk } from "@/lib/ai";
+import type { KnowledgeMetadata } from "@/lib/knowledge-metadata";
+import { insertChunks, singleChunk } from "@/lib/knowledge-store";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,19 +18,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Process content into chunks
-    let chunks: Array<{ chunk_index: number; content: string; word_count: number }> = [];
+    let chunks: WorkerChunk[] = [];
+    let metadata: KnowledgeMetadata | null = null;
     try {
       const processResult = await callWorkerProcess(content);
       chunks = processResult.chunks;
+      metadata = {
+        wordCount: processResult.word_count,
+        language: processResult.language ?? null,
+      };
     } catch (workerError) {
       console.warn("Python worker unavailable, using fallback:", workerError);
-      chunks = [
-        {
-          chunk_index: 0,
-          content,
-          word_count: content.split(/\s+/).filter(Boolean).length || 1,
-        },
-      ];
+      chunks = singleChunk(content);
     }
 
     if (chunks.length === 0) {
@@ -41,26 +42,20 @@ export async function POST(req: NextRequest) {
     const id = randomUUID();
     const now = new Date();
 
-    await db.insert(knowledge).values({
-      id,
-      title,
-      content,
-      sourceType: "text",
-      createdAt: now,
-      updatedAt: now,
+    db.transaction((tx) => {
+      tx.insert(knowledge)
+        .values({
+          id,
+          title,
+          content,
+          sourceType: "text",
+          metadata: metadata ? JSON.stringify(metadata) : null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      insertChunks(tx, id, chunks, now);
     });
-
-    // Save chunks
-    for (const chunk of chunks) {
-      await db.insert(knowledgeChunk).values({
-        id: randomUUID(),
-        knowledgeId: id,
-        chunkIndex: chunk.chunk_index,
-        content: chunk.content,
-        wordCount: chunk.word_count,
-        createdAt: now,
-      });
-    }
 
     return NextResponse.json({
       id,

@@ -8,6 +8,8 @@ export const knowledge = sqliteTable("knowledge", {
   sourceType: text("source_type").notNull().default("text"), // 'text' or 'file'
   originalFilename: text("original_filename"),
   mimeType: text("mime_type"),
+  // JSON string (KnowledgeMetadata): file size, pages, words, language, stored file
+  metadata: text("metadata"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

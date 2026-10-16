@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { knowledge, knowledgeChunk } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
-import { callWorkerProcess } from "@/lib/ai";
+import { asc, eq } from "drizzle-orm";
+import { callWorkerProcess, type WorkerChunk } from "@/lib/ai";
+import { parseJsonObject, type KnowledgeMetadata } from "@/lib/knowledge-metadata";
+import { insertChunks, removeOriginalFile, singleChunk } from "@/lib/knowledge-store";
 
 export async function GET(
   _req: NextRequest,
@@ -26,6 +27,7 @@ export async function GET(
       .select()
       .from(knowledgeChunk)
       .where(eq(knowledgeChunk.knowledgeId, id))
+      .orderBy(asc(knowledgeChunk.chunkIndex))
       .all();
 
     return NextResponse.json({ ...item, chunks });
@@ -47,6 +49,15 @@ export async function PUT(
     const body = await req.json();
     const { title, content, originalFilename, mimeType, sourceType } = body;
 
+    const existing = await db
+      .select({ metadata: knowledge.metadata })
+      .from(knowledge)
+      .where(eq(knowledge.id, id))
+      .get();
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const updateData: Record<string, unknown> = {
       title,
       updatedAt: new Date(),
@@ -59,43 +70,36 @@ export async function PUT(
     // Edited content must be re-chunked, otherwise retrieval keeps serving the
     // stale chunks of the previous version. Chunk first (may throw) so a worker
     // failure leaves the record untouched.
-    let newChunks: Array<{ chunk_index: number; content: string; word_count: number }> | null = null;
+    let newChunks: WorkerChunk[] | null = null;
     if (content !== undefined) {
+      const metadata = parseJsonObject<KnowledgeMetadata>(existing.metadata);
       try {
-        newChunks = (await callWorkerProcess(content)).chunks;
+        const processed = await callWorkerProcess(content);
+        newChunks = processed.chunks;
+        metadata.wordCount = processed.word_count;
+        metadata.language = processed.language ?? metadata.language ?? null;
       } catch (workerError) {
         console.warn("Python worker unavailable, using single chunk:", workerError);
-        newChunks = [
-          {
-            chunk_index: 0,
-            content,
-            word_count: content.split(/\s+/).filter(Boolean).length || 1,
-          },
-        ];
+        newChunks = singleChunk(content);
+        metadata.wordCount = newChunks[0].word_count;
       }
+      updateData.metadata = JSON.stringify(metadata);
     }
 
     db.transaction((tx) => {
       tx.update(knowledge).set(updateData).where(eq(knowledge.id, id)).run();
       if (newChunks) {
-        const now = new Date();
         tx.delete(knowledgeChunk).where(eq(knowledgeChunk.knowledgeId, id)).run();
-        for (const chunk of newChunks) {
-          tx.insert(knowledgeChunk)
-            .values({
-              id: randomUUID(),
-              knowledgeId: id,
-              chunkIndex: chunk.chunk_index,
-              content: chunk.content,
-              wordCount: chunk.word_count,
-              createdAt: now,
-            })
-            .run();
-        }
+        insertChunks(tx, id, newChunks, new Date());
       }
     });
 
-    return NextResponse.json({ id, title, content });
+    return NextResponse.json({
+      id,
+      title,
+      content,
+      chunksCreated: newChunks?.length,
+    });
   } catch (error) {
     console.error("PUT /api/knowledge/:id error:", error);
     return NextResponse.json(
@@ -112,8 +116,20 @@ export async function DELETE(
   try {
     const { id } = await params;
 
+    const existing = await db
+      .select({ metadata: knowledge.metadata })
+      .from(knowledge)
+      .where(eq(knowledge.id, id))
+      .get();
+
     // Cascade delete via schema foreign key
     await db.delete(knowledge).where(eq(knowledge.id, id));
+
+    if (existing) {
+      await removeOriginalFile(
+        parseJsonObject<KnowledgeMetadata>(existing.metadata).storedFile
+      );
+    }
 
     return NextResponse.json({ deleted: id });
   } catch (error) {

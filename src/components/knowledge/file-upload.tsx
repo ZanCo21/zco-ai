@@ -3,6 +3,12 @@
 import React, { useRef, useState } from "react";
 import { UploadCloud, FileText, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  formatFileSize,
+  MAX_UPLOAD_MB,
+  UPLOAD_ACCEPT,
+  validateUploadFile,
+} from "@/lib/upload-constraints";
 
 interface FileUploadProps {
   onFileSelect: (file: File | null) => void;
@@ -10,6 +16,7 @@ interface FileUploadProps {
   existingFilename?: string | null;
   accept?: string;
   maxSizeMB?: number;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -17,21 +24,14 @@ export function FileUpload({
   onFileSelect,
   selectedFile = null,
   existingFilename = null,
-  accept = ".pdf,.docx,.doc,.txt,.xls,.xlsx,.md",
-  maxSizeMB = 50,
+  accept = UPLOAD_ACCEPT,
+  maxSizeMB = MAX_UPLOAD_MB,
+  disabled = false,
   className,
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
 
   const handleFileChange = (file: File | null) => {
     setError(null);
@@ -40,8 +40,12 @@ export function FileUpload({
       return;
     }
 
-    if (file.size > maxSizeMB * 1024 * 1024) {
-      setError(`File size exceeds limit of ${maxSizeMB}MB`);
+    const problem =
+      file.size > maxSizeMB * 1024 * 1024
+        ? `File size exceeds limit of ${maxSizeMB}MB`
+        : validateUploadFile(file);
+    if (problem) {
+      setError(problem);
       return;
     }
 
@@ -51,7 +55,7 @@ export function FileUpload({
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(true);
+    if (!disabled) setIsDragging(true);
   };
 
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
@@ -65,7 +69,7 @@ export function FileUpload({
     e.stopPropagation();
     setIsDragging(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    if (!disabled && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       handleFileChange(file);
     }
@@ -123,7 +127,7 @@ export function FileUpload({
             Click to upload a file
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            PDF, DOCX, TXT, XLS up to {maxSizeMB}MB
+            PDF, DOCX, PPTX, XLSX, TXT, MD up to {maxSizeMB}MB
           </p>
         </div>
       ) : (
@@ -144,7 +148,7 @@ export function FileUpload({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className={cn("flex items-center gap-1.5 shrink-0", disabled && "hidden")}>
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
