@@ -1,8 +1,14 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { Sparkles, SendHorizonal, FileText } from "lucide-react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { Sparkles, SendHorizonal, FileText, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface SuggestedQuestion {
+  question: string;
+  knowledgeId: string;
+  title: string | null;
+}
 
 interface ChatSource {
   knowledgeId: string;
@@ -34,7 +40,31 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedQuestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageSeq = useRef(0);
+  const nextMessageId = (prefix: string) => `${prefix}-${++messageSeq.current}`;
+
+  // Questions generated from the knowledge base and pre-checked against the
+  // retrieval gate (worker /suggest). A new seed gives a different selection.
+  const fetchSuggestions = useCallback(() => {
+    const seed = Math.floor(Math.random() * 1_000_000);
+    fetch(`/api/suggestions?limit=3&seed=${seed}`)
+      .then((res) => res.json())
+      .then((data) => setSuggestions(Array.isArray(data.questions) ? data.questions : []))
+      .catch(() => setSuggestions([]))
+      .finally(() => setSuggestionsLoading(false));
+  }, []);
+
+  const loadSuggestions = () => {
+    setSuggestionsLoading(true);
+    fetchSuggestions();
+  };
+
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,13 +79,14 @@ export function ChatInterface() {
     return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent, text?: string) => {
     if (e) e.preventDefault();
-    const query = input.trim();
+    const query = (text ?? input).trim();
     if (!query || isLoading) return;
+    setSuggestions((prev) => prev.filter((s) => s.question !== query));
 
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: nextMessageId("user"),
       sender: "user",
       text: query,
       timestamp: getCurrentTime(),
@@ -79,7 +110,7 @@ export function ChatInterface() {
       const data = await res.json();
 
       const aiMessage: ChatMessage = {
-        id: `ai-${Date.now()}`,
+        id: nextMessageId("ai"),
         sender: "ai",
         text: data.answer || "Maaf, terjadi kesalahan dalam menghasilkan jawaban.",
         timestamp: getCurrentTime(),
@@ -89,7 +120,7 @@ export function ChatInterface() {
       setMessages((prev) => [...prev, aiMessage]);
     } catch {
       const errorMessage: ChatMessage = {
-        id: `ai-err-${Date.now()}`,
+        id: nextMessageId("ai-err"),
         sender: "ai",
         text: "Maaf, koneksi ke service AI sedang tidak tersedia. Pastikan backend dan Ollama berjalan.",
         timestamp: getCurrentTime(),
@@ -229,6 +260,45 @@ export function ChatInterface() {
           onSubmit={handleSend}
           className="max-w-4xl mx-auto"
         >
+          {(suggestionsLoading || suggestions.length > 0) && (
+            <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1" aria-label="Suggested questions">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 shrink-0">
+                <Sparkles className="w-3.5 h-3.5" />
+                Suggested
+              </span>
+              {suggestionsLoading
+                ? [0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="h-7 w-44 shrink-0 rounded-full bg-slate-100 animate-pulse"
+                      aria-hidden
+                    />
+                  ))
+                : suggestions.map((s) => (
+                    <button
+                      key={s.question}
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleSend(undefined, s.question)}
+                      title={s.title ? `From: ${s.title}` : undefined}
+                      className="shrink-0 max-w-xs truncate px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs text-slate-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {s.question}
+                    </button>
+                  ))}
+              {!suggestionsLoading && (
+                <button
+                  type="button"
+                  onClick={loadSuggestions}
+                  className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                  aria-label="Show other suggestions"
+                  title="Show other suggestions"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
           <div className="border border-slate-200 bg-white rounded-2xl p-1.5 pl-5 flex items-center gap-3 shadow-xs focus-within:border-indigo-600 focus-within:ring-1 focus-within:ring-indigo-600 transition-all">
             <input
               type="text"
